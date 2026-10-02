@@ -84,7 +84,23 @@ export default function App() {
     localStorage.setItem('northstar-demo-v4', JSON.stringify({ profile, motivation, selected, why, role, roadmap, intel, github, progress, resume, path, records }))
   }, [profile, motivation, selected, why, role, roadmap, intel, github, progress, resume, path, records])
 
-  function go(next: AppStep) { setStep(next); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  // Each screen is its own history entry, so the browser back/forward buttons move one screen at a time.
+  useEffect(() => {
+    window.history.replaceState({ step: 'welcome' }, '', '#/welcome')
+    const onPop = (event: PopStateEvent) => {
+      const next = flow.includes(event.state?.step) ? (event.state.step as AppStep) : 'welcome'
+      setStep(next); window.scrollTo({ top: 0 })
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+  // Screens that need a generated roadmap fall back to the plan screen if history lands on them without one.
+  useEffect(() => { if ((step === 'mission' || step === 'employer') && !roadmap) setStep('confirm') }, [step, roadmap])
+
+  function go(next: AppStep) {
+    if (next !== step) window.history.pushState({ step: next }, '', `#/${next}`)
+    setStep(next); window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
   function notify(message: string) { setToast(message); window.setTimeout(() => setToast(null), 2800) }
 
   async function discoverCompanies(nextResume: ResumeIntake | null, nextGithub: GithubProfile | null) {
