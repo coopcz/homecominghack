@@ -2,8 +2,23 @@ import type { Mission, Roadmap, StudentProfile } from './types'
 
 const normalized = (value: string) => value.toLowerCase().replace(/[^a-z0-9 ]/g, '')
 
+const conceptAliases: Record<string, string[]> = {
+  'artificial intelligence': ['ai', 'alignment', 'machine learning', 'developer tools', 'accelerated computing', 'agents'],
+  'humanoid robots': ['robotics', 'simulation', 'manufacturing', 'computer vision', 'autonomy', 'hardware'],
+  healthcare: ['healthtech', 'patient', 'care', 'payments', 'biotech'],
+  biotech: ['healthtech', 'science', 'research', 'patient', 'biology'],
+  'e-commerce': ['ecommerce', 'commerce', 'merchant', 'customer experience', 'payments', 'returns'],
+  marketplaces: ['marketplace', 'trust', 'real estate', 'travel', 'commerce'],
+  climate: ['sustainable', 'energy', 'manufacturing', 'climate'],
+  fintech: ['payments', 'fintech', 'internet economy', 'financial'],
+  education: ['learning', 'information', 'knowledge', 'accessibility'],
+  space: ['space', 'aerospace', 'simulation', 'manufacturing'],
+  design: ['design', 'consumer', 'human', 'experience'],
+}
+
 export function rankMissions(profile: StudentProfile, allMissions: Mission[]): Mission[] {
-  const signals = [...profile.interests, ...profile.skills, profile.major].map(normalized)
+  const rawSignals = [...profile.interests, ...profile.skills, profile.major].map(normalized)
+  const signals = rawSignals.flatMap((signal) => [signal, ...(conceptAliases[signal] ?? [])])
   return [...allMissions].sort((a, b) => score(b) - score(a))
 
   function score(mission: Mission) {
@@ -11,7 +26,7 @@ export function rankMissions(profile: StudentProfile, allMissions: Mission[]): M
     return signals.reduce((total, signal) => {
       if (!signal) return total
       const words = signal.split(' ').filter((word) => word.length > 2)
-      return total + words.reduce((sum, word) => sum + (corpus.includes(word) ? 2 : 0), 0)
+      return total + words.reduce((sum, word) => sum + (corpus.includes(word) ? (signal === rawSignals.find((raw) => raw.includes(word)) ? 4 : 2) : 0), 0)
     }, 0)
   }
 }
@@ -40,6 +55,13 @@ export function buildCuratedRoadmap(
     role,
     generatedBy: 'curated',
     thesis: `Build visible proof that you can use ${skill} to advance ${mission.company}’s mission—grounded in your belief in ${personalThread}.`,
+    fitSummary: `${mission.company} is a credible north star because your interest in ${profile.interests.slice(0, 2).join(' and ') || mission.themes[0]} meets a role where ${profile.major || skill} can produce visible evidence—not just enthusiasm.`,
+    fitReasons: [
+      { signal: 'Problem alignment', explanation: `You selected ${seedA} as work worth doing even without the title.` },
+      { signal: 'Useful starting point', explanation: `${profile.major || skill} maps to the core craft of a ${role}.` },
+      { signal: 'Personal conviction', explanation: `Your reason—${personalThread}—gives the work a durable motivation beyond the brand name.` },
+    ],
+    roleRationale: `${role} is the strongest entry point because it turns your current ${skill} foundation into work on ${mission.projectSeeds.slice(0, 2).join(' and ')}.`,
     projects: [
       {
         title: `${mission.company} mission teardown`,

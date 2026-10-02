@@ -6,11 +6,20 @@ const corsHeaders = {
 const roadmapSchema = {
   type: 'object',
   additionalProperties: false,
-  required: ['missionId', 'role', 'thesis', 'projects', 'credentials', 'courses', 'peopleStrategy', 'generatedBy'],
+  required: ['missionId', 'role', 'thesis', 'fitSummary', 'fitReasons', 'roleRationale', 'projects', 'credentials', 'courses', 'peopleStrategy', 'generatedBy'],
   properties: {
     missionId: { type: 'string' },
     role: { type: 'string' },
     thesis: { type: 'string' },
+    fitSummary: { type: 'string' },
+    fitReasons: {
+      type: 'array', minItems: 3, maxItems: 3,
+      items: {
+        type: 'object', additionalProperties: false, required: ['signal', 'explanation'],
+        properties: { signal: { type: 'string' }, explanation: { type: 'string' } },
+      },
+    },
+    roleRationale: { type: 'string' },
     projects: {
       type: 'array', minItems: 3, maxItems: 3,
       items: {
@@ -40,12 +49,15 @@ function promptFor(body: Record<string, unknown>) {
   return `You are a rigorous career-project architect. Create a roadmap for one student and one company mission.
 
 QUALITY BAR:
+- First explain the fit with exactly three specific, non-overlapping reasons grounded in the student's supplied interests, education/work, chosen problem, and personal why. Never write generic claims like "you are passionate" or "your skills align."
+- Explain why the selected role is the most credible bridge from the student's current position to the company's actual work.
 - Projects must solve a concrete sub-problem implied by the supplied mission, use the student's actual skills, and produce observable evidence.
 - Each project must be specific enough to build, test with real people or realistic public data, and demo in 90 seconds.
 - The three projects must progress from domain research, to a working artifact, to a real-world field experiment.
 - Do not suggest generic portfolio sites, clones, toy CRUD apps, or vague "AI-powered" projects.
 - Tie at least one project directly to the student's personal reason. Never invent facts about the company.
 - Do not invent employees, events, jobs, course URLs, partnerships, metrics, or proprietary company data.
+- When COMPANY RESEARCH is supplied, use only those sourced facts to make the roadmap more current. Do not turn uncertain reporting into a company fact.
 - Courses should name a reliable provider only if confident; otherwise describe the course category and say "University or recognized MOOC".
 - People strategy must explain roles to seek and a value-first outreach angle; never name a person.
 - Keep every item concise, honest, and feasible in 2–8 weeks.

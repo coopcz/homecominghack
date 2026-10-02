@@ -15,15 +15,15 @@ Open [http://localhost:5173](http://localhost:5173). With `VITE_DEMO_MODE=true`,
 ## Current journey
 
 1. One-button home screen.
-2. University, major, current skills, and interests.
-3. Swipe clean, logo-led mission cards.
-4. Search a global company catalog or enter another company.
-5. Company-logo launch into the student’s “north star” and inferred role.
-6. Personal explanation of why the mission matters.
-7. Local resume parsing plus server-validated GitHub connection.
-8. A level-based dashboard with role-specific projects, people, future events, and a sourced company feed.
+2. Pick interests and say what you study or do.
+3. Swipe five clean, logo-led mission cards.
+4. Answer three progressively revealing questions about motivation, the problem worth pursuing, and why it matters.
+5. Get a cinematic “we found your mission” reveal with a company, role, fit signals, and path.
+6. Start a focused 30-day quest: one thing to build, one thing to learn, and one person to meet.
+7. Connect GitHub through the server-safe profile boundary and watch commits turn into XP and a growing companion.
+8. Flip to the employer view to see mission alignment, public proof, GitHub activity, and progress in one candidate card.
 
-There is no signup. Profile, resume text, selection, dashboard, and progress remain in the user’s browser.
+There is no signup. Profile, selection, GitHub’s trimmed response, and progress remain in the user’s browser.
 
 ## Connect Supabase functions
 
@@ -46,26 +46,14 @@ npx supabase functions deploy company-intel
 4. The function returns only name, public bio, avatar/profile URLs, counts, top languages, recent public contribution count, and six trimmed public repositories.
 5. Only that trimmed object is sent to roadmap generation.
 
-The resume is parsed in the browser. The raw file is not uploaded. PDF, DOCX, TXT, and Markdown are supported up to 8 MB.
-
-## Company intelligence
-
-`company-intel` uses OpenAI web search to return:
-
-- current employees relevant to the selected role;
-- verified events strictly after the current date;
-- recent company or field updates;
-- a direct public source URL for every item.
-
-The function instructs the model to omit anything it cannot source. Without an OpenAI key, the dashboard shows an explicit research-ready state rather than fabricated names, events, or news.
+The hackathon path is intentionally curated to five companies. It does not scrape LinkedIn, invent employee profiles, or bury the student in a giant feed.
 
 ## Recommendation quality
 
-The roadmap prompt rejects generic portfolio sites, clones, toy CRUD apps, vague “AI-powered” ideas, invented company facts, and unverifiable claims. Projects must:
+The primary recommendation is deterministic for demo reliability. The selected company’s mission, role archetypes, and domain-specific problem seeds power the match, project, learning step, outreach step, and employer card. Projects must:
 
 - solve a concrete sub-problem connected to the mission;
-- use the student’s actual skills and resume evidence;
-- incorporate only the trimmed GitHub profile;
+- use the student’s actual study/work focus and motivation;
 - produce a working artifact and a 90-second demo;
 - include customer or domain evidence;
 - progress from research, to a prototype, to a field experiment;
@@ -84,4 +72,4 @@ npm run build
 npm audit --audit-level=high
 ```
 
-The browser test fixture at `test-fixtures/demo-resume.txt` exercises local resume extraction during end-to-end testing.
+The complete happy path can be tested without keys by using `octocat` as the GitHub username in demo mode.

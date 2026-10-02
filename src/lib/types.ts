@@ -31,6 +31,9 @@ export interface Roadmap {
   missionId: string
   role: string
   thesis: string
+  fitSummary: string
+  fitReasons: Array<{ signal: string; explanation: string }>
+  roleRationale: string
   projects: RoadmapProject[]
   credentials: string[]
   courses: { title: string; provider: string; outcome: string }[]
@@ -62,6 +65,7 @@ export interface GithubProfile {
 
 export interface CompanyIntel {
   people: Array<{ name: string; title: string; reason: string; sourceUrl: string }>
+  jobs: Array<{ title: string; location: string; summary: string; sourceUrl: string }>
   events: Array<{ title: string; date: string; location: string; sourceUrl: string }>
   feed: Array<{ title: string; summary: string; date: string; sourceUrl: string }>
   researchedAt: string
@@ -77,4 +81,10 @@ export interface ProgressEvent {
   occurredAt: string
 }
 
-export type AppStep = 'welcome' | 'onboarding' | 'missions' | 'search' | 'launch' | 'why' | 'connect' | 'dashboard'
+export interface CompanyRecommendation {
+  missionIds: string[]
+  reasons: Record<string, string>
+  generatedBy: 'ai' | 'curated'
+}
+
+export type AppStep = 'welcome' | 'interests' | 'profile' | 'motivation' | 'missions' | 'problem' | 'why' | 'match' | 'mission' | 'employer'

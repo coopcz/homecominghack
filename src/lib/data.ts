@@ -23,4 +23,4 @@ export const initialProgress: ProgressEvent[] = [
   { id: 'mission', type: 'project_milestone', label: 'Chose a north star', points: 20, verified: true, occurredAt: new Date().toISOString() },
 ]
 
-export const fallbackIntel: CompanyIntel = { people: [], events: [], feed: [], researchedAt: new Date().toISOString(), live: false }
+export const fallbackIntel: CompanyIntel = { people: [], jobs: [], events: [], feed: [], researchedAt: new Date().toISOString(), live: false }

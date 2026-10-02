@@ -5,9 +5,10 @@ const corsHeaders = {
 
 const intelSchema = {
   type: 'object', additionalProperties: false,
-  required: ['people', 'events', 'feed', 'researchedAt', 'live'],
+  required: ['people', 'jobs', 'events', 'feed', 'researchedAt', 'live'],
   properties: {
     people: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['name', 'title', 'reason', 'sourceUrl'], properties: { name: { type: 'string' }, title: { type: 'string' }, reason: { type: 'string' }, sourceUrl: { type: 'string' } } } },
+    jobs: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['title', 'location', 'summary', 'sourceUrl'], properties: { title: { type: 'string' }, location: { type: 'string' }, summary: { type: 'string' }, sourceUrl: { type: 'string' } } } },
     events: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, required: ['title', 'date', 'location', 'sourceUrl'], properties: { title: { type: 'string' }, date: { type: 'string' }, location: { type: 'string' }, sourceUrl: { type: 'string' } } } },
     feed: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, required: ['title', 'summary', 'date', 'sourceUrl'], properties: { title: { type: 'string' }, summary: { type: 'string' }, date: { type: 'string' }, sourceUrl: { type: 'string' } } } },
     researchedAt: { type: 'string' }, live: { type: 'boolean' },
@@ -23,16 +24,17 @@ Deno.serve(async (request) => {
     if (!body?.company || !body?.role) return Response.json({ error: 'Missing company or role' }, { status: 400, headers: corsHeaders })
     const today = new Date().toISOString().slice(0, 10)
     const input = `Research ${body.company} for a student pursuing ${body.role}. Today is ${today}.
-Find up to four current, publicly verifiable employees whose work is relevant to the role; up to four verified public events occurring strictly after today; and up to six recent company or field updates.
-Use official company pages, public professional profiles, reputable reporting, and official event pages. Every item must have a direct source URL. Never invent a person, title, event, date, or URL. If a claim cannot be sourced, omit it. Events in the past must be omitted. Keep reasons and summaries concise.
+Find up to four current, publicly verifiable employees whose work is relevant to the role; up to four currently open jobs from the company's official careers site that are relevant to the student's path; up to four verified public events occurring strictly after today; and up to six substantive company updates from reputable reporting or official announcements published in the last 120 days.
+Every item must have a direct source URL to the exact profile, job, event, or article—not a homepage or search result. Prefer reputable reporting for feed items and official sources for jobs and events. Never invent a person, title, job, event, date, article, or URL. If a claim cannot be sourced, omit it. Events in the past and closed jobs must be omitted. Keep reasons and summaries concise and explain why each result matters to this student.
 Student signal: ${JSON.stringify({ major: body.profile?.major, skills: body.profile?.skills, interests: body.profile?.interests })}
 Company mission: ${body.mission ?? ''}`
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: Deno.env.get('OPENAI_MODEL') ?? 'gpt-5-mini',
-        tools: [{ type: 'web_search' }],
+        model: Deno.env.get('OPENAI_SEARCH_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-5.5',
+        tools: [{ type: 'web_search', external_web_access: true }],
+        tool_choice: 'required',
         input,
         text: { format: { type: 'json_schema', name: 'company_intel', strict: true, schema: intelSchema } },
       }),
