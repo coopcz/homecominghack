@@ -3,14 +3,13 @@ import type { Mission, Roadmap, StudentProfile } from './types'
 const normalized = (value: string) => value.toLowerCase().replace(/[^a-z0-9 ]/g, '')
 
 export function rankMissions(profile: StudentProfile, allMissions: Mission[]): Mission[] {
-  const signals = [...profile.interests, ...profile.skills, ...profile.targetCompanies, profile.major].map(normalized)
+  const signals = [...profile.interests, ...profile.skills, profile.major].map(normalized)
   return [...allMissions].sort((a, b) => score(b) - score(a))
 
   function score(mission: Mission) {
     const corpus = normalized([mission.company, mission.mission, ...mission.themes].join(' '))
     return signals.reduce((total, signal) => {
       if (!signal) return total
-      if (normalized(mission.company).includes(signal) || signal.includes(normalized(mission.company))) return total + 12
       const words = signal.split(' ').filter((word) => word.length > 2)
       return total + words.reduce((sum, word) => sum + (corpus.includes(word) ? 2 : 0), 0)
     }, 0)

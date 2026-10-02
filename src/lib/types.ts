@@ -1,40 +1,22 @@
-export type AccountType = 'student' | 'employer'
-
 export interface StudentProfile {
   id: string
-  email: string
-  fullName: string
   university: string
   major: string
   skills: string[]
   interests: string[]
-  targetCompanies: string[]
-  githubUsername?: string
-  accountType: AccountType
 }
 
 export interface Mission {
   id: string
-  slug: string
   company: string
-  headline: string
+  domain: string
   mission: string
   founderStory: string
-  longDescription: string
-  location: string
-  website: string
   themes: string[]
   accent: string
-  imageUrl: string
+  logoUrl: string
   roleArchetypes: string[]
   projectSeeds: string[]
-}
-
-export interface FitQuestion {
-  id: string
-  question: string
-  eyebrow: string
-  options: string[]
 }
 
 export interface RoadmapProject {
@@ -56,6 +38,36 @@ export interface Roadmap {
   generatedBy: 'ai' | 'curated'
 }
 
+export interface GithubProfile {
+  login: string
+  name: string | null
+  bio: string | null
+  avatarUrl: string
+  profileUrl: string
+  publicRepos: number
+  followers: number
+  topLanguages: string[]
+  recentCommitCount: number
+  repositories: Array<{
+    name: string
+    description: string | null
+    url: string
+    stars: number
+    language: string | null
+    topics: string[]
+    pushedAt: string
+  }>
+  verified: boolean
+}
+
+export interface CompanyIntel {
+  people: Array<{ name: string; title: string; reason: string; sourceUrl: string }>
+  events: Array<{ title: string; date: string; location: string; sourceUrl: string }>
+  feed: Array<{ title: string; summary: string; date: string; sourceUrl: string }>
+  researchedAt: string
+  live: boolean
+}
+
 export interface ProgressEvent {
   id: string
   type: 'github_commit' | 'course_completed' | 'outreach' | 'project_milestone'
@@ -65,14 +77,4 @@ export interface ProgressEvent {
   occurredAt: string
 }
 
-export type AppStep =
-  | 'welcome'
-  | 'auth'
-  | 'onboarding'
-  | 'missions'
-  | 'questions'
-  | 'why'
-  | 'roadmap'
-  | 'progress'
-  | 'employer'
-
+export type AppStep = 'welcome' | 'onboarding' | 'missions' | 'search' | 'launch' | 'why' | 'connect' | 'dashboard'

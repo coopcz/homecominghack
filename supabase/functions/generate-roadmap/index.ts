@@ -1,5 +1,3 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.58.0'
-
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -36,14 +34,6 @@ const roadmapSchema = {
     peopleStrategy: { type: 'array', minItems: 3, maxItems: 4, items: { type: 'string' } },
     generatedBy: { type: 'string', enum: ['ai'] },
   },
-}
-
-function browserClient(authHeader: string) {
-  const publishableKeys = JSON.parse(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') ?? '{}')
-  const key = Deno.env.get('SUPABASE_ANON_KEY') ?? publishableKeys.default
-  return createClient(Deno.env.get('SUPABASE_URL')!, key, {
-    global: { headers: { Authorization: authHeader } },
-  })
 }
 
 function promptFor(body: Record<string, unknown>) {
@@ -109,11 +99,6 @@ async function generateWithAnthropic(input: string) {
 Deno.serve(async (request) => {
   if (request.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   try {
-    const authHeader = request.headers.get('Authorization') ?? ''
-    const client = browserClient(authHeader)
-    const { data: { user }, error: authError } = await client.auth.getUser()
-    if (authError || !user) return Response.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders })
-
     const body = await request.json()
     if (!body?.mission?.id || !body?.profile || !body?.why || !body?.role) {
       return Response.json({ error: 'Missing roadmap context' }, { status: 400, headers: corsHeaders })
@@ -121,13 +106,10 @@ Deno.serve(async (request) => {
 
     const input = promptFor(body)
     let roadmap
-    let provider: 'openai' | 'anthropic'
     if (Deno.env.get('OPENAI_API_KEY')) {
       roadmap = await generateWithOpenAI(input)
-      provider = 'openai'
     } else if (Deno.env.get('ANTHROPIC_API_KEY')) {
       roadmap = await generateWithAnthropic(input)
-      provider = 'anthropic'
     } else {
       return Response.json({ error: 'No AI provider configured' }, { status: 503, headers: corsHeaders })
     }
@@ -135,17 +117,6 @@ Deno.serve(async (request) => {
     roadmap.missionId = body.mission.id
     roadmap.role = body.role
     roadmap.generatedBy = 'ai'
-    const { error: saveError } = await client.from('roadmaps').upsert({
-      user_id: user.id,
-      mission_id: body.mission.id,
-      role_title: body.role,
-      thesis: roadmap.thesis,
-      content: roadmap,
-      generated_by: provider,
-      prompt_version: 'v1',
-    }, { onConflict: 'user_id,mission_id' })
-    if (saveError) console.error('Roadmap save failed', saveError)
-
     return Response.json(roadmap, { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (error) {
     console.error(error)

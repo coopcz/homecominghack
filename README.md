@@ -1,10 +1,8 @@
 # Northstar
 
-Northstar helps students find a company mission they genuinely care about, turn that motivation into unusually relevant projects, and show employers verified momentum.
+Northstar helps anyone choose a company mission they care about, identify a fitting role, and build visible proof that they belong there. It is not limited to a university, region, or company list.
 
-The demo is intentionally resilient: it works end-to-end with local browser storage before any keys are added, then switches to Supabase Auth, Postgres, AI-generated roadmaps, and verified GitHub commits when configured.
-
-## Run the demo
+## Run locally
 
 ```bash
 npm install
@@ -12,64 +10,70 @@ cp .env.example .env
 npm run dev
 ```
 
-With `VITE_DEMO_MODE=true`, use **Skip to the demo** or **Continue without an account**. Data stays in that browser. This is the safest way to rehearse the presentation.
+Open [http://localhost:5173](http://localhost:5173). With `VITE_DEMO_MODE=true`, the complete experience runs without external keys and saves progress in `localStorage`.
 
-## Connect Supabase
+## Current journey
 
-The project is prepared for Supabase project `lejzqzqiklkcyppgdapc`.
+1. One-button home screen.
+2. University, major, current skills, and interests.
+3. Swipe clean, logo-led mission cards.
+4. Search a global company catalog or enter another company.
+5. Company-logo launch into the student’s “north star” and inferred role.
+6. Personal explanation of why the mission matters.
+7. Local resume parsing plus server-validated GitHub connection.
+8. A level-based dashboard with role-specific projects, people, future events, and a sourced company feed.
 
-1. Copy the project URL and publishable key from **Supabase → Project Settings → API** into `.env`.
-2. Set `VITE_DEMO_MODE=false`.
-3. Link and apply the migration:
+There is no signup. Profile, resume text, selection, dashboard, and progress remain in the user’s browser.
 
-   ```bash
-   npx supabase link --project-ref lejzqzqiklkcyppgdapc
-   npx supabase db push
-   ```
+## Connect Supabase functions
 
-4. For frictionless hackathon accounts, open **Authentication → Providers → Email** and turn **Confirm email** off. Email uniqueness is enforced by Supabase Auth and by `public.users.email`.
-5. Add either OpenAI or Anthropic plus the optional GitHub token to `supabase/functions/.env` for local work:
+Add the project URL and publishable key to `.env`, then set `VITE_DEMO_MODE=false`.
 
-   ```bash
-   cp .env.example supabase/functions/.env
-   ```
+```bash
+npx supabase link --project-ref lejzqzqiklkcyppgdapc
+cp supabase/functions/.env.example supabase/functions/.env
+npx supabase secrets set --env-file supabase/functions/.env
+npx supabase functions deploy github-profile
+npx supabase functions deploy generate-roadmap
+npx supabase functions deploy company-intel
+```
 
-   Only keep `OPENAI_API_KEY` **or** `ANTHROPIC_API_KEY`, the matching model name, and `GITHUB_TOKEN` in that function env file. Browser values are not required there.
-6. Set production secrets and deploy:
+`github-profile` implements the privacy boundary:
 
-   ```bash
-   npx supabase secrets set --env-file supabase/functions/.env
-   npx supabase functions deploy generate-roadmap
-   npx supabase functions deploy github-sync
-   ```
+1. The browser sends only a validated username.
+2. The Edge Function calls GitHub using the private `GITHUB_TOKEN`.
+3. Raw GitHub responses stay server-side.
+4. The function returns only name, public bio, avatar/profile URLs, counts, top languages, recent public contribution count, and six trimmed public repositories.
+5. Only that trimmed object is sent to roadmap generation.
 
-Supabase injects its URL and server-side keys into deployed Edge Functions. Never put a secret/service-role key in a `VITE_` variable.
+The resume is parsed in the browser. The raw file is not uploaded. PDF, DOCX, TXT, and Markdown are supported up to 8 MB.
 
-## What is implemented
+## Company intelligence
 
-- Mobile-first signup and onboarding for university, major, skills, interests, and target companies.
-- Swipeable mission deck with curated entries for Neighbor, Redo, Waystar, Weave, and Podium.
-- Three adaptive fit questions and role inference.
-- Personal mission statement capture.
-- AI roadmap generation through an authenticated Edge Function, supporting OpenAI first or Anthropic as a fallback provider.
-- A strict roadmap prompt that rejects generic clones and demands customer evidence, a shipped artifact, a field experiment, and direct mission relevance.
-- Deterministic curated roadmaps if AI is unconfigured or unavailable.
-- GitHub commit verification through a server-side function, cached results for rate limits, and idempotent progress events.
-- Pet evolution and manual course/outreach/project progress.
-- Employer view showing mission alignment and verified activity.
-- RLS-protected schema and indexes for `users`, `missions`, `roles`, `courses`, `people`, `feed_items`, `selections`, `roadmaps`, `progress_events`, and `github_connections`.
+`company-intel` uses OpenAI web search to return:
 
-Per the brief, the `roles`, `people`, `courses`, and `feed_items` tables are created but empty. The app does not fabricate employees, future events, or job openings. Roadmap course items are learning categories unless an AI provider is confident in a stable provider name; no invented URLs are produced.
+- current employees relevant to the selected role;
+- verified events strictly after the current date;
+- recent company or field updates;
+- a direct public source URL for every item.
 
-## Live demo path
+The function instructs the model to omit anything it cannot source. Without an OpenAI key, the dashboard shows an explicit research-ready state rather than fabricated names, events, or news.
 
-1. Scan QR and choose **Skip to the demo**.
-2. Enter a major, skills, and interests.
-3. Swipe right on a mission.
-4. Answer three questions and add a personal reason (30+ characters).
-5. Show the three-project roadmap and its evidence requirements.
-6. Open **Progress**, enter a GitHub username/repository, and sync.
-7. Use **Employer view** in the header to show the same candidate and momentum signal.
+## Recommendation quality
+
+The roadmap prompt rejects generic portfolio sites, clones, toy CRUD apps, vague “AI-powered” ideas, invented company facts, and unverifiable claims. Projects must:
+
+- solve a concrete sub-problem connected to the mission;
+- use the student’s actual skills and resume evidence;
+- incorporate only the trimmed GitHub profile;
+- produce a working artifact and a 90-second demo;
+- include customer or domain evidence;
+- progress from research, to a prototype, to a field experiment;
+- be feasible in two to eight weeks.
+
+## Logos
+
+Company marks are downloaded into `public/logos` rather than loaded from generic photography. Sources and trademark notes are recorded in `public/logos/SOURCES.md`.
 
 ## Verification
 
@@ -77,7 +81,7 @@ Per the brief, the `roles`, `people`, `courses`, and `feed_items` tables are cre
 npm run typecheck
 npm run lint
 npm run build
-npx supabase db lint --local
+npm audit --audit-level=high
 ```
 
-The last command requires the local Supabase Docker stack (`npx supabase start`).
+The browser test fixture at `test-fixtures/demo-resume.txt` exercises local resume extraction during end-to-end testing.

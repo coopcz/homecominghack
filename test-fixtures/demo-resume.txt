@@ -1,0 +1,6 @@
+Alex Morgan
+Computer Science Student
+
+Skills: React, TypeScript, Python, PostgreSQL, product discovery
+Experience: Built and shipped mobile-first web prototypes, interviewed users, and analyzed product metrics.
+Project: Created a marketplace matching tool with a React frontend and Postgres backend.

@@ -385,13 +385,18 @@ deno_version = 2
 
 [functions.generate-roadmap]
 enabled = true
-verify_jwt = true
+verify_jwt = false
 entrypoint = "./functions/generate-roadmap/index.ts"
 
-[functions.github-sync]
+[functions.github-profile]
 enabled = true
-verify_jwt = true
-entrypoint = "./functions/github-sync/index.ts"
+verify_jwt = false
+entrypoint = "./functions/github-profile/index.ts"
+
+[functions.company-intel]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/company-intel/index.ts"
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
