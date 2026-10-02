@@ -137,9 +137,9 @@ export interface ResumeIntake {
 export type ProofKind = 'link' | 'file' | 'text'
 
 export interface PathStep {
-  kind?: 'lesson' | 'project' | 'leetcode' | 'reading' | 'interview'
+  kind?: 'lesson' | 'project' | 'leetcode' | 'reading' | 'interview' | 'networking' | 'reflection'
   resources?: LearningResource[]
-  phase?: 'Foundations' | 'Build' | 'Scale' | 'Interview / Application'
+  phase?: string
   requirementIds?: string[]
   completionMode?: 'self' | 'evidence'
   projectId?: string

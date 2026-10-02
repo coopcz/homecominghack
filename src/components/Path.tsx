@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, ArrowRight, BookOpen, Brain, Check, Code2, ExternalLink, FileText, Layers3, Link2, LoaderCircle, Lock, Play, Plus, Type, Upload, X } from 'lucide-react'
+import { AlertCircle, ArrowRight, BookOpen, Brain, Check, Code2, ExternalLink, FileText, Layers3, Link2, LoaderCircle, Lock, MessageCircleQuestion, Play, Plus, RefreshCw, Type, Upload, X } from 'lucide-react'
 import { buildIntake, detectSkills, extractFileText } from '../lib/resume'
 import type { ProofInput } from '../lib/path'
 import type { Mission, PathStep, ProofKind, ResumeIntake, RoadmapProject, StepRecord } from '../lib/types'
@@ -119,6 +119,8 @@ const nodeMeta = {
   project: { label: 'Project', icon: Layers3 },
   leetcode: { label: 'Coding exercise', icon: Code2 },
   interview: { label: 'Interview practice', icon: Brain },
+  networking: { label: 'Connect with people', icon: MessageCircleQuestion },
+  reflection: { label: 'Feedback checkpoint', icon: RefreshCw },
 }
 
 function StepModal({ step, record, locked, busy, onClose, onSubmit }: { step: PathStep; record?: StepRecord; locked: boolean; busy: boolean; onClose: () => void; onSubmit: (proof: ProofInput) => void }) {

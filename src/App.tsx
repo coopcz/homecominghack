@@ -171,7 +171,7 @@ export default function App() {
     let nextPath = buildJobGroundedPath(nextProfile, intake, selected, nextRole)
     if (!isDemoMode) {
       try {
-        const result = await callFunction<{ steps: PathStep[] }>('generate-path', { profile: nextProfile, resume: intake, role: nextRole, why, motivation, mission: selected, github, jobSource })
+        const result = await callFunction<{ steps: PathStep[] }>('generate-path', { profile: nextProfile, resume: intake, role: nextRole, why, motivation, mission: selected, roadmap: nextRoadmap, companyResearch: nextIntel, github, jobSource })
         if (result.steps?.length && result.steps.every((step) => step.phase && step.completionMode && step.resources)) nextPath = result.steps
       } catch { notify('Using the built-in path builder.') }
     }
@@ -349,7 +349,7 @@ function MissionControl({ mission, profile, why, motivation, resume, setResume, 
       try {
         const result = await callFunction<{ steps: PathStep[] }>('generate-path', {
           profile, resume: intake, role: roadmap.role, why, motivation,
-          mission: { id: mission.id, company: mission.company, mission: mission.mission, themes: mission.themes, projectSeeds: mission.projectSeeds },
+          mission: { id: mission.id, company: mission.company, mission: mission.mission, themes: mission.themes, projectSeeds: mission.projectSeeds }, roadmap, companyResearch: intel,
           github: github ? { topLanguages: github.topLanguages, repositories: github.repositories.map(({ name, description, language }) => ({ name, description, language })) } : null,
         })
         if (result.steps?.length && result.steps.every((step) => step.phase && step.completionMode && step.resources)) steps = result.steps
