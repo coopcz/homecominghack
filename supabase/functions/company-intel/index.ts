@@ -28,12 +28,13 @@ Find up to four current, publicly verifiable employees whose work is relevant to
 Every item must have a direct source URL to the exact profile, job, event, or article—not a homepage or search result. Prefer reputable reporting for feed items and official sources for jobs and events. Never invent a person, title, job, event, date, article, or URL. If a claim cannot be sourced, omit it. Events in the past and closed jobs must be omitted. Keep reasons and summaries concise and explain why each result matters to this student.
 Student signal: ${JSON.stringify({ major: body.profile?.major, skills: body.profile?.skills, interests: body.profile?.interests })}
 Company mission: ${body.mission ?? ''}`
-    const preferredModel = Deno.env.get('OPENAI_SEARCH_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-5-mini'
+    const preferredModel = Deno.env.get('OPENAI_SEARCH_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-5.6-luna'
     const makeRequest = (model: string) => fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model,
+        reasoning: { effort: 'none' },
         max_output_tokens: 2400,
         tools: [{ type: 'web_search', external_web_access: true }],
         tool_choice: 'required',
@@ -42,7 +43,7 @@ Company mission: ${body.mission ?? ''}`
       }),
     })
     let response = await makeRequest(preferredModel)
-    if (!response.ok && preferredModel === 'gpt-5-mini') response = await makeRequest('gpt-4.1-mini')
+    if (!response.ok && preferredModel === 'gpt-5.6-luna') response = await makeRequest('gpt-5.4-mini')
     if (!response.ok) throw new Error(`Company research failed (${response.status})`)
     const data = await response.json()
     const outputText = data.output_text ?? data.output?.flatMap((item: { content?: { text?: string }[] }) => item.content ?? []).find((item: { text?: string }) => item.text)?.text

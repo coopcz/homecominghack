@@ -44,7 +44,7 @@ Deno.serve(async (request) => {
     const body = await request.json()
     if (!body?.mission?.id || !body?.profile || !body?.why || !body?.role) return Response.json({ error: 'Missing roadmap context' }, { status: 400, headers: corsHeaders })
     if (!hasProvider()) return Response.json({ error: 'No AI provider configured' }, { status: 503, headers: corsHeaders })
-    const roadmap = await generateStructured({ prompt: promptFor(body), schema: roadmapSchema, name: 'mission_roadmap', maxTokens: 6000 })
+    const roadmap = await generateStructured({ prompt: promptFor(body), schema: roadmapSchema, name: 'mission_roadmap', maxTokens: 6000, reasoningEffort: 'low' })
     roadmap.version = 2; roadmap.missionId = body.mission.id; roadmap.role = body.role; roadmap.generatedBy = 'ai'
     roadmap.targetJob = { ...roadmap.targetJob, title: body.role, company: body.mission.company, retrievedAt: new Date().toISOString(), sourceUrl: body.jobSource ?? roadmap.targetJob.sourceUrl ?? '', status: body.jobSource ? 'sourced' : 'inferred' }
     return Response.json(roadmap, { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })

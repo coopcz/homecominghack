@@ -36,7 +36,7 @@ Deno.serve(async (request) => {
     if (!body?.mission?.id || !body?.role || !body?.resume || !body?.roadmap) return Response.json({ error: 'Missing path context' }, { status: 400, headers: corsHeaders })
     if (!hasProvider()) return Response.json({ error: 'No AI provider configured' }, { status: 503, headers: corsHeaders })
     const trimmed = { ...body, resume: { ...body.resume, text: String(body.resume.text ?? '').slice(0, 12000) } }
-    const result = await generateStructured({ prompt: prompt(trimmed), schema, name: 'submit_path', maxTokens: 8000, webSearch: true })
+    const result = await generateStructured({ prompt: prompt(trimmed), schema, name: 'submit_path', maxTokens: 8000, webSearch: true, reasoningEffort: 'low' })
     const validProjectIds = new Set((body.roadmap.projects ?? []).map((project: { id?: string }) => project.id).filter(Boolean))
     const steps = result.steps.map((step: Record<string, unknown>, index: number) => ({
       ...step, id: `s${index + 1}`,

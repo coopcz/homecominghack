@@ -12,19 +12,21 @@ interface StructuredRequest {
   maxTokens?: number
   image?: ImageInput
   webSearch?: boolean
+  reasoningEffort?: 'none' | 'low'
 }
 
 export const hasProvider = () => Boolean(Deno.env.get('OPENAI_API_KEY') || Deno.env.get('ANTHROPIC_API_KEY'))
 
-async function withOpenAI({ prompt, schema, name, maxTokens, image, webSearch }: StructuredRequest) {
+async function withOpenAI({ prompt, schema, name, maxTokens, image, webSearch, reasoningEffort = 'none' }: StructuredRequest) {
   const content: unknown[] = [{ type: 'input_text', text: prompt }]
   if (image) content.push({ type: 'input_image', image_url: `data:${image.mime};base64,${image.base64}` })
-  const preferredModel = Deno.env.get('OPENAI_MODEL') ?? 'gpt-5-mini'
+  const preferredModel = Deno.env.get('OPENAI_MODEL') ?? 'gpt-5.6-luna'
   const makeRequest = (model: string) => fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: { Authorization: `Bearer ${Deno.env.get('OPENAI_API_KEY')}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model,
+      reasoning: { effort: reasoningEffort },
       max_output_tokens: maxTokens ?? 2400,
       input: [{ role: 'user', content }],
       ...(webSearch ? { tools: [{ type: 'web_search', external_web_access: true }] } : {}),
@@ -32,7 +34,7 @@ async function withOpenAI({ prompt, schema, name, maxTokens, image, webSearch }:
     }),
   })
   let response = await makeRequest(preferredModel)
-  if (!response.ok && preferredModel === 'gpt-5-mini') response = await makeRequest('gpt-4.1-mini')
+  if (!response.ok && preferredModel === 'gpt-5.6-luna') response = await makeRequest('gpt-5.4-mini')
   if (!response.ok) throw new Error(`OpenAI error ${response.status}: ${await response.text()}`)
   const data = await response.json()
   const text = data.output_text ?? data.output?.flatMap((item: { content?: { text?: string }[] }) => item.content ?? []).find((item: { text?: string }) => item.text)?.text

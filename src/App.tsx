@@ -151,21 +151,24 @@ export default function App() {
   }
 
   async function generatePlan(nextRole: string, nextProfile: StudentProfile, nextResume: ResumeIntake | null, jobSource?: string) {
-    setProfile(nextProfile); setResume(nextResume); setRole(nextRole); setPlanBusy(true); setRoadmap(null); setPath([]); setRecords({}); setProgress((events) => events.filter((event) => ['github-connect', 'github-commits'].includes(event.id))); go('match')
-    setRole(nextRole)
+    setProfile(nextProfile); setResume(nextResume); setRole(nextRole); setPlanBusy(true); setPath([]); setRecords({}); setProgress((events) => events.filter((event) => ['github-connect', 'github-commits'].includes(event.id)))
     const curated = buildCuratedRoadmap(nextProfile, selected, nextRole, why)
     if (jobSource) curated.targetJob = { ...curated.targetJob!, sourceUrl: jobSource, status: 'sourced' }
-    let nextIntel = fallbackIntel
+    const preloadedIntel = withDossier(selected.id, fallbackIntel)
+    setRoadmap(curated); setIntel(preloadedIntel); go('match')
+    let nextIntel = preloadedIntel
     let nextRoadmap = curated
     if (!isDemoMode) {
-      try {
-        nextIntel = await callFunction<CompanyIntel>('company-intel', { company: selected.company, domain: selected.domain, mission: selected.mission, role: nextRole, profile: nextProfile, jobSource })
-      } catch { notify('Live research is unavailable; the mission plan still works.') }
-      try {
-        const generated = await callFunction<Roadmap>('generate-roadmap', { profile: nextProfile, mission: selected, why, motivation, chosenProblem: selected.projectSeeds[0], role: nextRole, companyResearch: nextIntel, jobSource })
+      const [intelResult, roadmapResult] = await Promise.allSettled([
+        callFunction<CompanyIntel>('company-intel', { company: selected.company, domain: selected.domain, mission: selected.mission, role: nextRole, profile: nextProfile, jobSource }),
+        callFunction<Roadmap>('generate-roadmap', { profile: nextProfile, mission: selected, why, motivation, chosenProblem: selected.projectSeeds[0], role: nextRole, companyResearch: preloadedIntel, jobSource }),
+      ])
+      if (intelResult.status === 'fulfilled') nextIntel = withDossier(selected.id, intelResult.value)
+      if (roadmapResult.status === 'fulfilled') {
+        const generated = roadmapResult.value
         if (generated.version === 2 && generated.targetJob && generated.requirements?.length && generated.projects.every((project) => project.preview && project.acceptanceCriteria?.length)) nextRoadmap = generated
-      } catch { notify('Using the evidence-led curated plan.') }
-    } else await new Promise((resolve) => window.setTimeout(resolve, 850))
+      }
+    }
     setIntel(nextIntel); setRoadmap(nextRoadmap)
     const intake = nextResume ?? { text: '', skills: [...new Set([...nextProfile.skills, ...(github?.topLanguages ?? [])])], experience: [] }
     let nextPath = buildJobGroundedPath(nextProfile, intake, selected, nextRole)
@@ -193,7 +196,7 @@ export default function App() {
       {step === 'problem' && <ProblemStep key="problem" missions={matchedMissions} insights={matchInsights} busy={commitmentBusy} onSelect={(mission) => { setSelected(mission); go('why') }} />}
       {step === 'why' && <WhyStep key="why" mission={selected} value={why} onComplete={finishWhy} />}
       {step === 'confirm' && <PlanConfirmation key="confirm" mission={selected} profile={profile} role={role} resume={resume} onBack={() => go('why')} onGenerate={generatePlan} />}
-      {step === 'match' && (planBusy || !roadmap ? <MatchLoading key="loading" mission={selected} /> : <MatchReveal key="match" mission={selected} roadmap={roadmap} intel={intel} onBack={() => go('problem')} onStart={() => go('mission')} />)}
+      {step === 'match' && (!roadmap ? <MatchLoading key="loading" mission={selected} /> : <MatchReveal key="match" mission={selected} roadmap={roadmap} intel={intel} enhancing={planBusy} onBack={() => go('problem')} onStart={() => go('mission')} />)}
       {step === 'mission' && roadmap && <MissionControl key="mission-control" profile={profile} why={why} motivation={motivation} resume={resume} setResume={setResume} setPath={setPath} setGithub={setGithub} mission={selected} roadmap={roadmap} intel={intel} path={path} records={records} setRecords={setRecords} github={github} progress={progress} setProgress={setProgress} onEmployer={() => go('employer')} notify={notify} />}
       {step === 'employer' && roadmap && <EmployerView key="employer" profile={profile} mission={selected} roadmap={roadmap} why={why} motivation={motivation} resume={resume} github={github} progress={progress} path={path} records={records} onBack={() => go('mission')} />}
     </AnimatePresence>
@@ -306,9 +309,9 @@ function MatchLoading({ mission }: { mission: Mission }) {
   return <main className="match-loading"><CompanyLogo mission={mission} /><LoaderCircle className="spin" /><h1>Loading your mission</h1><p>Checking role fit and current openings.</p></main>
 }
 
-function MatchReveal({ mission, roadmap, intel, onBack, onStart }: { mission: Mission; roadmap: Roadmap; intel: CompanyIntel; onBack: () => void; onStart: () => void }) {
+function MatchReveal({ mission, roadmap, intel, enhancing, onBack, onStart }: { mission: Mission; roadmap: Roadmap; intel: CompanyIntel; enhancing: boolean; onBack: () => void; onStart: () => void }) {
   const shortFit = roadmap.fitSummary.split(/(?<=[.!?])\s+/)[0]
-  return <main className="match-reveal brief-reveal"><div className="match-top"><Brand /><button onClick={onBack}><ArrowLeft size={16} /> Try another match</button></div><section className="brief-hero"><div className="match-logo"><CompanyLogo mission={mission} /></div><motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}><p className="eyebrow">Your north star</p><h1>{mission.company}</h1><div className="matched-role"><Target size={17} /> {roadmap.role}</div><p>{shortFit}</p></motion.div></section><section className="brief-jobs"><div><p className="eyebrow">Target profile</p><h2>{roadmap.targetJob?.status === 'sourced' ? 'Grounded in your source.' : 'Clearly marked as inferred.'}</h2></div><div className="brief-job-list">{intel.jobs.length ? intel.jobs.slice(0, 3).map((job) => <a href={job.sourceUrl} target="_blank" rel="noreferrer" key={job.sourceUrl}><span><strong>{job.title}</strong><small>{job.location}</small></span><span><b>{job.totalComp || 'Not published'}</b><ExternalLink size={15} /></span></a>) : <p>No verified opening matched this role today. The roadmap uses an inferred early-career role profile and does not present it as a sourced company requirement.</p>}</div></section><section className="brief-action"><button className="secondary" onClick={onBack}><ArrowLeft size={17} /> Choose another</button><button className="primary" onClick={onStart}>Open roadmap <Target size={18} /></button></section></main>
+  return <main className="match-reveal brief-reveal"><div className="match-top"><Brand /><button onClick={onBack}><ArrowLeft size={16} /> Try another match</button></div><section className="brief-hero northstar-stage"><div className="northstar-mark" aria-hidden="true"><i /><i /><i /><span>✦</span></div><motion.div className="match-logo" initial={{ opacity: 0, scale: .35, rotate: -8 }} animate={{ opacity: 1, scale: 1, rotate: 0 }} transition={{ type: 'spring', stiffness: 125, damping: 16, delay: .08 }}><CompanyLogo mission={mission} /></motion.div><motion.div initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: .09, delayChildren: .28 } } }}><motion.p className="eyebrow" variants={{ hidden:{opacity:0,y:10},show:{opacity:1,y:0} }}>Your north star</motion.p><motion.h1 variants={{ hidden:{opacity:0,y:22},show:{opacity:1,y:0} }}>{mission.company}</motion.h1><motion.div className="matched-role" variants={{ hidden:{opacity:0,y:10},show:{opacity:1,y:0} }}><Target size={17} /> {roadmap.role}</motion.div><motion.p variants={{ hidden:{opacity:0,y:10},show:{opacity:1,y:0} }}>{shortFit}</motion.p>{enhancing && <motion.small className="plan-enhancing" initial={{opacity:0}} animate={{opacity:1}}><Sparkles size={13}/> Personalizing the deeper roadmap in the background</motion.small>}</motion.div></section><motion.section className="brief-jobs" initial={{opacity:0,y:18}} animate={{opacity:1,y:0}} transition={{delay:.5,duration:.4}}><div><p className="eyebrow">Target profile</p><h2>{roadmap.targetJob?.status === 'sourced' ? 'Grounded in your source.' : 'Clearly marked as inferred.'}</h2></div><div className="brief-job-list">{intel.jobs.length ? intel.jobs.slice(0, 3).map((job) => <a href={job.sourceUrl} target="_blank" rel="noreferrer" key={job.sourceUrl}><span><strong>{job.title}</strong><small>{job.location}</small></span><span><b>{job.totalComp || 'Not published'}</b><ExternalLink size={15} /></span></a>) : <p>No verified opening matched this role today. The roadmap uses an inferred early-career role profile and does not present it as a sourced company requirement.</p>}</div></motion.section><section className="brief-action"><button className="secondary" onClick={onBack}><ArrowLeft size={17} /> Choose another</button><button className="primary" onClick={onStart}>Open roadmap <Target size={18} /></button></section></main>
 }
 
 function GithubConnect({ github, setGithub, setProgress, close, notify }: { github: GithubProfile | null; setGithub: (profile: GithubProfile) => void; setProgress: React.Dispatch<React.SetStateAction<ProgressEvent[]>>; close: () => void; notify: (message: string) => void }) {
