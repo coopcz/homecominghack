@@ -1,9 +1,23 @@
 export interface StudentProfile {
   id: string
+  name?: string
+  email?: string
+  linkedinUrl?: string
   university: string
   major: string
   skills: string[]
   interests: string[]
+  graduationMonth?: string
+  graduationYear?: string
+}
+
+export interface MissionAlignment {
+  score: number
+  headline: string
+  summary: string
+  strengths: Array<{ title: string; evidence: string }>
+  nextStep: string
+  generatedBy: 'ai' | 'curated'
 }
 
 export interface Mission {
@@ -21,12 +35,24 @@ export interface Mission {
 }
 
 export interface RoadmapProject {
+  id?: string
   title: string
   brief: string
   proof: string
-  weeks: number
+  weeks?: number
   tags: string[]
+  level?: 'focused' | 'system' | 'flagship'
+  outcome?: string
+  requirementIds?: string[]
+  preview?: { kind: 'pipeline' | 'system' | 'simulation'; eyebrow: string; metrics: Array<{ label: string; value: string }>; flow: string[] }
+  milestones?: string[]
+  deliverables?: string[]
+  acceptanceCriteria?: string[]
 }
+
+export interface JobRequirement { id: string; label: string; excerpt: string; category: 'skill' | 'experience' | 'responsibility'; source: 'official' | 'inferred' }
+export interface JobTarget { title: string; company: string; sourceUrl?: string; retrievedAt: string; status: 'sourced' | 'inferred'; description?: string }
+export interface LearningResource { label?: string; title?: string; provider?: string; url: string; skill?: string; kind: 'video' | 'reading' | 'exercise' }
 
 export interface Roadmap {
   missionId: string
@@ -40,6 +66,9 @@ export interface Roadmap {
   courses: { title: string; provider: string; outcome: string }[]
   peopleStrategy: string[]
   generatedBy: 'ai' | 'curated'
+  version?: 2
+  targetJob?: JobTarget
+  requirements?: JobRequirement[]
 }
 
 export interface GithubProfile {
@@ -96,7 +125,7 @@ export interface MatchInsight {
   sourceUrl: string
 }
 
-export type AppStep = 'welcome' | 'interests' | 'profile' | 'motivation' | 'signals' | 'missions' | 'problem' | 'why' | 'match' | 'mission' | 'employer'
+export type AppStep = 'welcome' | 'interests' | 'profile' | 'motivation' | 'signals' | 'missions' | 'problem' | 'why' | 'confirm' | 'match' | 'mission' | 'employer'
 
 export interface ResumeIntake {
   text: string
@@ -109,7 +138,11 @@ export type ProofKind = 'link' | 'file' | 'text'
 
 export interface PathStep {
   kind?: 'lesson' | 'project' | 'leetcode' | 'reading' | 'interview'
-  resources?: Array<{ label: string; url: string; kind: 'video' | 'reading' | 'exercise' }>
+  resources?: LearningResource[]
+  phase?: 'Foundations' | 'Build' | 'Scale' | 'Interview / Application'
+  requirementIds?: string[]
+  completionMode?: 'self' | 'evidence'
+  projectId?: string
   id: string
   project: string
   title: string
@@ -132,4 +165,5 @@ export interface StepRecord {
   checks: ProofCheck[]
   method: 'ai' | 'github' | 'local'
   checkedAt: string
+  reviewState?: 'self-completed' | 'reviewed-evidence'
 }

@@ -56,8 +56,45 @@ export function buildCuratedRoadmap(
   why: string,
 ): Roadmap {
   const personalThread = (why.trim() || `making ${mission.themes[0]} products more useful for real people`).replace(/[.!?]+$/, '')
-  const skill = profile.skills[0] || (role.includes('Design') ? 'product design' : role.includes('Data') ? 'data analysis' : 'software development')
+  const skill = profile.skills.find((value) => !/computer science|^cs$|major/i.test(value)) || (role.includes('Design') ? 'product design' : role.includes('Data') ? 'data analysis' : 'software development')
   const [seedA, seedB, seedC] = mission.projectSeeds
+  const isRobotics = /robot|autonom|perception/i.test(`${role} ${mission.themes.join(' ')}`)
+  const isFlight = /flight|aerospace|space|embedded/i.test(`${role} ${mission.themes.join(' ')}`)
+  const isHealthData = /health|claim|data engineer|analyst/i.test(`${role} ${mission.themes.join(' ')} ${seedA}`)
+  const requirements = (isRobotics
+    ? [['r1','Python or C++','Build reliable robotics software'],['r2','Perception and planning','Work with sensor inputs and motion decisions'],['r3','Testing','Validate behavior across edge cases']]
+    : isFlight
+      ? [['r1','C++ or systems programming','Develop safety-conscious flight software'],['r2','Telemetry','Work with real-time state and fault signals'],['r3','Verification','Test deterministic behavior and failure modes']]
+      : isHealthData
+        ? [['r1','SQL and data modeling','Transform healthcare transaction data'],['r2','Python pipelines','Build observable, reproducible processing'],['r3','Data quality','Detect denials, anomalies, and reconciliation issues']]
+        : [['r1',skill,`Apply ${skill} to production-shaped work`],['r2','Systems thinking','Design beyond a single happy path'],['r3','Communication','Explain tradeoffs with measurable evidence']]
+  ).map(([id,label,excerpt]) => ({ id, label, excerpt, category: 'skill' as const, source: 'inferred' as const }))
+  const concepts = isRobotics
+    ? [
+      ['Sensor Fusion Sandbox','Build a replayable simulator that combines noisy camera and range observations into a tracked world model.','Tracked objects, confidence changes, and dropped-frame behavior','simulation',['sensor stream','fusion','world model']],
+      ['Perception-to-Planning System','Connect detection, occupancy mapping, and path planning with inspectable intermediate states.','A route planner that explains why it reroutes','system',['perception','occupancy grid','A* planner']],
+      ['Autonomy Evaluation Lab','Create scenario generation, regression metrics, and failure replay for a small autonomous stack.','A flagship evaluation report across adversarial scenarios','simulation',['scenario suite','autonomy stack','evaluation report']],
+    ] : isFlight ? [
+      ['Flight Telemetry Decoder','Parse a documented packet format and surface vehicle state, missing frames, and sensor drift.','A deterministic decoder with a live sample-output panel','pipeline',['packet stream','decoder','state timeline']],
+      ['Fault-Tolerant Command System','Model command validation, state transitions, retry behavior, and audit logs.','A testable command path with explicit failure handling','system',['command queue','state machine','audit log']],
+      ['Mission Control Simulation','Simulate telemetry, faults, operator commands, and post-flight analysis in one reproducible environment.','A flagship mission replay with reliability metrics','simulation',['flight simulator','control service','mission replay']],
+    ] : isHealthData ? [
+      ['Claims Quality Pipeline','Ingest synthetic claims, validate fields, and produce a denial-ready quality report.','A reproducible pipeline with rejected-row explanations','pipeline',['synthetic claims','validation','quality report']],
+      ['Denial Intelligence System','Model claim events, denial categories, recovery actions, and operational metrics.','An explainable work queue with measurable recovery signals','system',['claim events','rules + features','operations view']],
+      ['Revenue Cycle Simulation','Generate realistic claim lifecycles and evaluate interventions without using patient data.','A flagship scenario report comparing denial-prevention strategies','simulation',['scenario generator','claims system','strategy report']],
+    ] : [
+      [`${seedA} Signal Explorer`,`Turn realistic public or synthetic data about ${seedA} into a focused diagnostic tool.`,'A clear baseline and one useful decision','pipeline',['sample data','analysis','decision view']],
+      [`${seedB} Operating System`,`Design the deeper services, data model, failure states, and observability behind ${seedB}.`,'A system that remains legible under edge cases','system',['inputs','core service','observability']],
+      [`${seedC} Evaluation Lab`,`Build a flagship simulation that compares approaches to ${seedC} against explicit metrics.`,'A defensible case study with repeatable results','simulation',['scenario suite','system','evaluation']],
+    ]
+  const projects = concepts.map(([title,brief,outcome,kind,flow],index) => ({
+    id:`project-${index+1}`, title:title as string, brief:brief as string, proof:'Repository, designed output preview, README, and measured acceptance report.',
+    tags:index===0?[skill,'data quality']:[skill,index===1?'system design':'evaluation'], level:(['focused','system','flagship'] as const)[index], outcome:outcome as string,
+    requirementIds:index===0?['r1']:index===1?['r1','r2']:['r1','r2','r3'], preview:{kind:kind as 'pipeline'|'system'|'simulation',eyebrow:['Focused first build','Deeper system','Ambitious flagship'][index],metrics:[{label:'Primary signal',value:['Valid rows','Handled states','Scenarios passed'][index]},{label:'Evidence',value:['Quality report','Failure log','Evaluation brief'][index]}],flow:flow as string[]},
+    milestones:['Define the smallest credible data and behavior contract','Build the core path plus explicit failure states','Document results, tradeoffs, and a concise demo'],
+    deliverables:['Public repository and setup guide','Designed sample-output preview','Short architecture and results brief'],
+    acceptanceCriteria:['Runs from a clean setup with synthetic or public data','Shows at least three edge cases and their outcomes','Maps results to the linked job requirements'],
+  }))
 
   return {
     missionId: mission.id,
@@ -71,29 +108,10 @@ export function buildCuratedRoadmap(
       { signal: 'Personal conviction', explanation: `Your reason—${personalThread}—gives the work a durable motivation beyond the brand name.` },
     ],
     roleRationale: `${role} is the strongest entry point because it turns your current ${skill} foundation into work on ${mission.projectSeeds.slice(0, 2).join(' and ')}.`,
-    projects: [
-      {
-        title: `${mission.company} mission teardown`,
-        brief: `Interview 5 potential users, map the current journey around ${seedA}, and publish a sharp product memo with one testable improvement.`,
-        proof: 'Public research memo, journey map, interview notes, and a prioritized experiment.',
-        weeks: 2,
-        tags: ['customer evidence', 'product judgment'],
-      },
-      {
-        title: `${seedB.charAt(0).toUpperCase() + seedB.slice(1)} prototype`,
-        brief: `Build a working, mobile-first prototype that uses realistic data to improve ${seedB}. Instrument one outcome that matters to the mission.`,
-        proof: 'Deployed demo, GitHub repository, 90-second walkthrough, and measured result.',
-        weeks: 3,
-        tags: [skill, 'shipped work'],
-      },
-      {
-        title: `${seedC.charAt(0).toUpperCase() + seedC.slice(1)} field experiment`,
-        brief: `Partner with one real organization or user, run a small experiment around ${seedC}, and document what changed after feedback.`,
-        proof: 'Before/after evidence, decision log, and a concise case study with honest limitations.',
-        weeks: 4,
-        tags: ['real users', 'measured impact'],
-      },
-    ],
+    version: 2,
+    targetJob: { title: role, company: mission.company, retrievedAt: new Date().toISOString(), status: 'inferred' },
+    requirements,
+    projects,
     credentials: [
       `A portfolio case study tying decisions to ${mission.mission.toLowerCase()}`,
       `A clean public GitHub trail showing weekly progress in ${skill}`,

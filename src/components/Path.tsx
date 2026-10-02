@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, ArrowRight, BookOpen, Brain, Check, Code2, ExternalLink, FileText, Link2, LoaderCircle, Lock, Play, Plus, Rocket, Type, Upload, X } from 'lucide-react'
+import { AlertCircle, ArrowRight, BookOpen, Brain, Check, Code2, ExternalLink, FileText, Layers3, Link2, LoaderCircle, Lock, Play, Plus, Type, Upload, X } from 'lucide-react'
 import { buildIntake, detectSkills, extractFileText } from '../lib/resume'
 import type { ProofInput } from '../lib/path'
-import type { Mission, PathStep, ProofKind, ResumeIntake, StepRecord } from '../lib/types'
+import type { Mission, PathStep, ProofKind, ResumeIntake, RoadmapProject, StepRecord } from '../lib/types'
 
 export function ResumeIntakeForm({ mission, role, busy, initial, onSubmit }: { mission: Mission; role: string; busy: boolean; initial: ResumeIntake | null; onSubmit: (intake: ResumeIntake) => void }) {
   const [text, setText] = useState(initial?.text ?? '')
@@ -116,7 +116,7 @@ function stepKind(step: PathStep): NonNullable<PathStep['kind']> {
 const nodeMeta = {
   lesson: { label: 'Lesson', icon: Play },
   reading: { label: 'Reading', icon: BookOpen },
-  project: { label: 'Project', icon: Rocket },
+  project: { label: 'Project', icon: Layers3 },
   leetcode: { label: 'Coding exercise', icon: Code2 },
   interview: { label: 'Interview practice', icon: Brain },
 }
@@ -126,10 +126,7 @@ function StepModal({ step, record, locked, busy, onClose, onSubmit }: { step: Pa
   const meta = nodeMeta[stepKind(step)]
   const Icon = meta.icon
   const done = record?.status === 'verified'
-  const resources = step.resources?.length ? step.resources : [
-    { label: `YouTube tutorials: ${step.title}`, url: `https://www.youtube.com/results?search_query=${encodeURIComponent(step.title)}`, kind: 'video' as const },
-    { label: 'Guide: documenting your project', url: 'https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes', kind: 'reading' as const },
-  ]
+  const resources = step.resources ?? []
   useEffect(() => {
     const element = dialog.current
     element?.showModal()
@@ -146,16 +143,16 @@ function StepModal({ step, record, locked, busy, onClose, onSubmit }: { step: Pa
       <p className="node-modal-summary">{step.summary}</p>
       {locked && <p className="node-preview"><Lock size={15} /> Preview this step. Complete the earlier nodes to submit your proof.</p>}
       <h3>Resources for this step</h3>
-      <div className="node-resources">{resources.map((resource) => <a key={resource.url} href={resource.url} target="_blank" rel="noreferrer">{resource.kind === 'video' ? <Play size={19} /> : resource.kind === 'exercise' ? <Code2 size={19} /> : <BookOpen size={19} />}<span><small>{resource.kind === 'video' ? 'Watch on YouTube' : resource.kind === 'exercise' ? 'Practice' : 'Read'}</small>{resource.label}</span><ExternalLink size={16} /></a>)}</div>
+      {resources.length ? <div className="node-resources">{resources.map((resource) => <a key={resource.url} href={resource.url} target="_blank" rel="noreferrer">{resource.kind === 'video' ? <Play size={19} /> : resource.kind === 'exercise' ? <Code2 size={19} /> : <BookOpen size={19} />}<span><small>{resource.provider} · {resource.skill}</small>{resource.title}</span><ExternalLink size={16} /></a>)}</div> : <p className="resource-empty">No verified resource is attached to this step yet.</p>}
       <h3>Your next actions</h3><ol className="action-list">{step.actions.map((action) => <li key={action}>{action}</li>)}</ol>
       <div className="proof-box"><h4>What to submit</h4><p>{step.proofAsk}</p><ul>{step.checks.map((criterion) => { const check = record?.checks.find((item) => item.criterion === criterion); return <li key={criterion} className={check?.met === false ? 'fail' : ''}><Check size={14} /><span>{criterion}{check?.met === false && check.note && <em> — {check.note}</em>}</span></li> })}</ul></div>
       {record?.status === 'needs_work' && <p className="feedback bad" role="status"><AlertCircle size={16} />{record.feedback}</p>}
-      {done && record ? <div className="verified-box"><p className="feedback good"><Check size={16} />{record.feedback}</p><small>{methodLabel[record.method]} · +{step.points} XP</small></div> : !locked && <ProofForm step={step} busy={busy} previous={record} onSubmit={onSubmit} />}
+      {done && record ? <div className="verified-box"><p className="feedback good"><Check size={16} />{record.feedback}</p><small>{record.reviewState === 'self-completed' ? 'Self-completed' : methodLabel[record.method]} · +{step.points} XP</small></div> : !locked && (step.completionMode === 'self' ? <button className="primary mark-complete" onClick={() => onSubmit({ kind: 'text', value: 'Self-completed' })}>Mark complete <Check size={17}/></button> : <ProofForm step={step} busy={busy} previous={record} onSubmit={onSubmit} />)}
     </div>
   </dialog>
 }
 
-export function PathView({ steps, records, busyId, onSubmit }: { steps: PathStep[]; records: Record<string, StepRecord>; busyId: string | null; onSubmit: (step: PathStep, proof: ProofInput) => void }) {
+export function PathView({ steps, projects = [], records, busyId, onSubmit }: { steps: PathStep[]; projects?: RoadmapProject[]; records: Record<string, StepRecord>; busyId: string | null; onSubmit: (step: PathStep, proof: ProofInput) => void }) {
   const current = steps.findIndex((step) => records[step.id]?.status !== 'verified')
   const [open, setOpen] = useState<string | null>(null)
   const selectedIndex = steps.findIndex((step) => step.id === open)
@@ -169,14 +166,15 @@ export function PathView({ steps, records, busyId, onSubmit }: { steps: PathStep
       const locked = current !== -1 && index > current
       const meta = nodeMeta[stepKind(step)]
       const Icon = meta.icon
+      const project = step.projectId ? projects.find((item) => item.id === step.projectId) : undefined
       const header = step.project !== lastProject ? step.project : null
       lastProject = step.project
       return <li key={step.id} className={`learning-stop ${done ? 'done' : ''} ${active ? 'active' : ''} ${locked ? 'locked' : ''}`}>
         {header && <div className="learning-unit"><small>Career path · Section</small><h3>{header}</h3><BookOpen size={25} /></div>}
         <div className="learning-position" style={{ '--node-offset': `${offsets[index % offsets.length]}px` } as React.CSSProperties}>
           {active && <span className="node-start-label">START HERE</span>}
-          <button className={`learning-orb ${stepKind(step)}`} onClick={() => setOpen(step.id)} aria-label={`${meta.label}: ${step.title}. ${done ? 'Completed' : locked ? 'Preview upcoming step' : 'Start this step'}`} aria-haspopup="dialog">{done ? <Check size={31} strokeWidth={3.5} /> : <Icon size={30} strokeWidth={2.5} />}{locked && <span className="node-lock"><Lock size={12} /></span>}</button>
-          <span className="learning-node-title">{step.title}</span>
+          {project ? <button className="project-milestone" onClick={() => setOpen(step.id)} aria-label={`Project: ${step.title}`} aria-haspopup="dialog"><span className="project-level">{project.preview?.eyebrow ?? project.level}</span><strong>{project.title}</strong><p>{project.outcome ?? project.brief}</p><div className="project-flow">{(project.preview?.flow ?? ['input','system','evidence']).map((item, flowIndex) => <span key={item}>{item}{flowIndex < 2 && <i>→</i>}</span>)}</div><div className="project-chips">{project.tags.map((tag) => <small key={tag}>{tag}</small>)}{project.requirementIds?.map((id) => <small key={id}>Requirement {id.slice(1)}</small>)}</div>{done && <b><Check size={14}/> Evidence complete</b>}</button> : <button className={`learning-orb ${stepKind(step)}`} onClick={() => setOpen(step.id)} aria-label={`${meta.label}: ${step.title}. ${done ? 'Completed' : locked ? 'Preview upcoming step' : 'Start this step'}`} aria-haspopup="dialog">{done ? <Check size={31} strokeWidth={3.5} /> : <Icon size={30} strokeWidth={2.5} />}{locked && <span className="node-lock"><Lock size={12} /></span>}</button>}
+          {!project && <span className="learning-node-title">{step.title}</span>}
           <small className="learning-node-kind">{meta.label} · {step.points} XP</small>
         </div>
       </li>
