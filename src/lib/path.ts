@@ -93,7 +93,40 @@ export function buildCuratedPath(profile: StudentProfile, intake: ResumeIntake, 
       checks: ['Covers problem, evidence, build, results, next steps', 'Links to demo and repo', 'Honest about limitations'],
     },
   )
-  return steps
+  const guides: Record<string, { label: string; url: string }> = {
+    TypeScript: { label: 'TypeScript Handbook', url: 'https://www.typescriptlang.org/docs/handbook/intro.html' },
+    'APIs & backend': { label: 'MDN: HTTP overview', url: 'https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview' },
+    SQL: { label: 'PostgreSQL SQL tutorial', url: 'https://www.postgresql.org/docs/current/tutorial-sql.html' },
+    Git: { label: 'Git: getting started', url: 'https://git-scm.com/book/en/v2/Getting-Started-About-Version-Control' },
+    Python: { label: 'The Python tutorial', url: 'https://docs.python.org/3/tutorial/' },
+  }
+  const learning: PathStep[] = gaps.map((skill, index) => ({
+    id: `learn-${index}`, kind: 'lesson', project: 'Foundations · Learn the tools',
+    title: `Learn ${skill}`, summary: `Build the ${skill} foundation for ${role} work.`,
+    actions: [`Follow a ${skill} lesson and write down the core concepts.`, `Build a small example connected to ${seedA}.`, 'Explain what you built, what failed, and what you learned.'],
+    resources: [
+      { label: `${skill} tutorials on YouTube`, url: `https://www.youtube.com/results?search_query=${encodeURIComponent(`${skill} beginner tutorial`)}`, kind: 'video' },
+      ...(guides[skill] ? [{ ...guides[skill], kind: 'reading' as const }] : []),
+    ],
+    proofAsk: 'Write a learning reflection with the example you built (80+ words).', proofKinds: ['text'], points: 20,
+    checks: [`Explains core ${skill} concepts`, 'Describes a working example', 'Identifies one limitation or lesson'],
+  }))
+  const technical = /engineer|data|analyst/i.test(role)
+  const practice: PathStep[] = technical ? [{
+    id: 'practice-patterns', kind: 'leetcode', project: 'Practice · Problem solving', title: /data|analyst/i.test(role) ? 'Practice SQL joins' : 'Practice arrays and hash maps',
+    summary: 'Solve one focused exercise, then explain your approach and tradeoffs.',
+    resources: [{ label: /data|analyst/i.test(role) ? 'LeetCode: Combine Two Tables' : 'LeetCode: Two Sum', url: /data|analyst/i.test(role) ? 'https://leetcode.com/problems/combine-two-tables/' : 'https://leetcode.com/problems/two-sum/', kind: 'exercise' }],
+    actions: ['Attempt the exercise before opening a solution.', 'Explain your approach, complexity, and edge cases.', 'Retry it without notes the next day.'], proofAsk: 'Paste your solution and explain your reasoning (80+ words).', proofKinds: ['text'], points: 25,
+    checks: ['Includes a solution', 'Explains the approach and tradeoffs', 'Discusses edge cases'],
+  }] : []
+  const interview: PathStep = {
+    id: 'practice-interview', kind: 'interview', project: 'Interview · Tell your story', title: 'Practice your project interview',
+    summary: `Explain why your work prepares you to contribute at ${mission.company}.`,
+    actions: ['Answer: What problem did you choose and why?', 'Explain one technical or design decision and an alternative you rejected.', 'Describe the result, a limitation, and what you would improve next.'],
+    proofAsk: 'Write your interview answers (120+ words).', proofKinds: ['text'], points: 30,
+    checks: ['Describes the problem and evidence', 'Explains a decision and tradeoff', 'Connects the outcome to the target company'],
+  }
+  return [...learning, ...steps.slice(0, 3), ...practice, ...steps.slice(3), interview]
 }
 
 export const totalStepPoints = (steps: PathStep[]) => steps.reduce((sum, step) => sum + step.points, 0)
@@ -151,4 +184,3 @@ export async function verifyLocally(step: PathStep, proof: ProofInput): Promise<
   if (new Set(proof.value.toLowerCase().split(/\s+/)).size / words < 0.4) return miss('This looks repetitive. Write it in your own words.')
   return pass('Length and format look right. Basic check only: the AI content review is not enabled in this demo.', 'local', 'Not reviewed')
 }
-

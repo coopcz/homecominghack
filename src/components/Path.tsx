@@ -1,6 +1,5 @@
-import { useRef, useState } from 'react'
-import { motion } from 'framer-motion'
-import { AlertCircle, ArrowRight, Check, ChevronDown, FileText, Link2, LoaderCircle, Lock, Plus, Type, Upload, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { AlertCircle, ArrowRight, BookOpen, Brain, Check, Code2, ExternalLink, FileText, Link2, LoaderCircle, Lock, Play, Plus, Rocket, Type, Upload, X } from 'lucide-react'
 import { buildIntake, detectSkills, extractFileText } from '../lib/resume'
 import type { ProofInput } from '../lib/path'
 import type { Mission, PathStep, ProofKind, ResumeIntake, StepRecord } from '../lib/types'
@@ -105,37 +104,83 @@ function ProofForm({ step, busy, previous, onSubmit }: { step: PathStep; busy: b
 
 const methodLabel = { ai: 'Reviewed by AI', github: 'Checked on GitHub', local: 'Basic check' } as const
 
+function stepKind(step: PathStep): NonNullable<PathStep['kind']> {
+  if (step.kind) return step.kind
+  if (/interview|practice.*story/i.test(step.title)) return 'interview'
+  if (/leetcode|hash map|algorithm|sql joins/i.test(step.title)) return 'leetcode'
+  if (/learn|foundation|tutorial/i.test(step.title)) return 'lesson'
+  if (/read|research|problem statement|teardown|memo/i.test(step.title)) return 'reading'
+  return 'project'
+}
+
+const nodeMeta = {
+  lesson: { label: 'Lesson', icon: Play },
+  reading: { label: 'Reading', icon: BookOpen },
+  project: { label: 'Project', icon: Rocket },
+  leetcode: { label: 'Coding exercise', icon: Code2 },
+  interview: { label: 'Interview practice', icon: Brain },
+}
+
+function StepModal({ step, record, locked, busy, onClose, onSubmit }: { step: PathStep; record?: StepRecord; locked: boolean; busy: boolean; onClose: () => void; onSubmit: (proof: ProofInput) => void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
+  const meta = nodeMeta[stepKind(step)]
+  const Icon = meta.icon
+  const done = record?.status === 'verified'
+  const resources = step.resources?.length ? step.resources : [
+    { label: `YouTube tutorials: ${step.title}`, url: `https://www.youtube.com/results?search_query=${encodeURIComponent(step.title)}`, kind: 'video' as const },
+    { label: 'Guide: documenting your project', url: 'https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes', kind: 'reading' as const },
+  ]
+  useEffect(() => {
+    const element = dialog.current
+    element?.showModal()
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { element?.close(); document.body.style.overflow = previousOverflow }
+  }, [])
+  return <dialog ref={dialog} className="roadmap-dialog" aria-labelledby="node-modal-title" onCancel={onClose} onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+    <div className="node-modal-content">
+      <button autoFocus className="node-modal-close" onClick={onClose} aria-label="Close node"><X size={20} /></button>
+      <div className={`node-modal-icon ${stepKind(step)}`}><Icon size={28} /></div>
+      <p className="eyebrow">{meta.label} · {step.points} XP</p>
+      <h2 id="node-modal-title">{step.title}</h2>
+      <p className="node-modal-summary">{step.summary}</p>
+      {locked && <p className="node-preview"><Lock size={15} /> Preview this step. Complete the earlier nodes to submit your proof.</p>}
+      <h3>Resources for this step</h3>
+      <div className="node-resources">{resources.map((resource) => <a key={resource.url} href={resource.url} target="_blank" rel="noreferrer">{resource.kind === 'video' ? <Play size={19} /> : resource.kind === 'exercise' ? <Code2 size={19} /> : <BookOpen size={19} />}<span><small>{resource.kind === 'video' ? 'Watch on YouTube' : resource.kind === 'exercise' ? 'Practice' : 'Read'}</small>{resource.label}</span><ExternalLink size={16} /></a>)}</div>
+      <h3>Your next actions</h3><ol className="action-list">{step.actions.map((action) => <li key={action}>{action}</li>)}</ol>
+      <div className="proof-box"><h4>What to submit</h4><p>{step.proofAsk}</p><ul>{step.checks.map((criterion) => { const check = record?.checks.find((item) => item.criterion === criterion); return <li key={criterion} className={check?.met === false ? 'fail' : ''}><Check size={14} /><span>{criterion}{check?.met === false && check.note && <em> — {check.note}</em>}</span></li> })}</ul></div>
+      {record?.status === 'needs_work' && <p className="feedback bad" role="status"><AlertCircle size={16} />{record.feedback}</p>}
+      {done && record ? <div className="verified-box"><p className="feedback good"><Check size={16} />{record.feedback}</p><small>{methodLabel[record.method]} · +{step.points} XP</small></div> : !locked && <ProofForm step={step} busy={busy} previous={record} onSubmit={onSubmit} />}
+    </div>
+  </dialog>
+}
+
 export function PathView({ steps, records, busyId, onSubmit }: { steps: PathStep[]; records: Record<string, StepRecord>; busyId: string | null; onSubmit: (step: PathStep, proof: ProofInput) => void }) {
   const current = steps.findIndex((step) => records[step.id]?.status !== 'verified')
   const [open, setOpen] = useState<string | null>(null)
+  const selectedIndex = steps.findIndex((step) => step.id === open)
+  const selected = steps[selectedIndex]
+  const offsets = [0, -56, -100, -56, 0, 56, 100, 56]
   let lastProject = ''
-  return <ol className="path-list">
-    {steps.map((step, index) => {
-      const record = records[step.id]
-      const done = record?.status === 'verified'
+  return <div className="learning-roadmap">
+    <ol className="learning-nodes">{steps.map((step, index) => {
+      const done = records[step.id]?.status === 'verified'
       const active = index === current
       const locked = current !== -1 && index > current
-      const expanded = active || open === step.id
+      const meta = nodeMeta[stepKind(step)]
+      const Icon = meta.icon
       const header = step.project !== lastProject ? step.project : null
       lastProject = step.project
-      return <li key={step.id} className={`${done ? 'done' : ''} ${active ? 'active' : ''} ${locked ? 'locked' : ''}`}>
-        {header && <p className="path-project">{header}</p>}
-        <div className="step-card">
-          <button className="step-head" disabled={locked || active} onClick={() => setOpen(open === step.id ? null : step.id)} aria-expanded={expanded}>
-            <span className="step-dot">{done ? <Check size={16} /> : locked ? <Lock size={13} /> : index + 1}</span>
-            <span className="step-title"><strong>{step.title}</strong>{!expanded && <small>{done ? `Verified · +${step.points} XP` : step.summary}</small>}</span>
-            {done && <ChevronDown className="chev" size={18} />}
-          </button>
-          {expanded && <motion.div className="step-body" initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
-            {!done && <p className="step-summary">{step.summary}</p>}
-            {!done && <><h4>Do this</h4><ol className="action-list">{step.actions.map((action) => <li key={action}>{action}</li>)}</ol></>}
-            {!done && <div className="proof-box"><h4>Proof to submit</h4><p>{step.proofAsk}</p><ul>{step.checks.map((check, i) => { const met = record?.checks.find((c) => c.criterion === check)?.met; const failed = record && !done && met === false; return <li key={check} className={failed ? 'fail' : ''}>{failed ? <X size={14} /> : <Check size={14} />}<span>{check}{failed && record.checks[i]?.note ? <em> — {record.checks[i].note}</em> : null}</span></li> })}</ul></div>}
-            {record?.status === 'needs_work' && <p className="feedback bad" role="status"><AlertCircle size={16} />{record.feedback}</p>}
-            {!done && <ProofForm key={step.id + (record?.checkedAt ?? '')} step={step} busy={busyId === step.id} previous={record} onSubmit={(proof) => onSubmit(step, proof)} />}
-            {done && record && <div className="verified-box"><p className="feedback good"><Check size={16} />{record.feedback}</p><p className="submitted">Submitted: {record.proof.kind === 'link' ? <a href={record.proof.value} target="_blank" rel="noreferrer">{record.proof.value}</a> : record.proof.fileName ?? `${record.proof.value.slice(0, 120)}…`}</p><small>{methodLabel[record.method]} · +{step.points} XP</small></div>}
-          </motion.div>}
+      return <li key={step.id} className={`learning-stop ${done ? 'done' : ''} ${active ? 'active' : ''} ${locked ? 'locked' : ''}`}>
+        {header && <div className="learning-unit"><small>Career path · Section</small><h3>{header}</h3><BookOpen size={25} /></div>}
+        <div className="learning-position" style={{ '--node-offset': `${offsets[index % offsets.length]}px` } as React.CSSProperties}>
+          {active && <span className="node-start-label">START HERE</span>}
+          <button className={`learning-orb ${stepKind(step)}`} onClick={() => setOpen(step.id)} aria-label={`${meta.label}: ${step.title}. ${done ? 'Completed' : locked ? 'Preview upcoming step' : 'Start this step'}`} aria-haspopup="dialog">{done ? <Check size={31} strokeWidth={3.5} /> : <Icon size={30} strokeWidth={2.5} />}{locked && <span className="node-lock"><Lock size={12} /></span>}</button>
+          <span className="learning-node-title">{step.title}</span>
+          <small className="learning-node-kind">{meta.label} · {step.points} XP</small>
         </div>
       </li>
-    })}
-  </ol>
+    })}</ol>
+    {selected && <StepModal key={selected.id} step={selected} record={records[selected.id]} locked={current !== -1 && selectedIndex > current} busy={busyId === selected.id} onClose={() => setOpen(null)} onSubmit={(proof) => onSubmit(selected, proof)} />}
+  </div>
 }

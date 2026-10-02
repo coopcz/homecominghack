@@ -108,6 +108,8 @@ export interface ResumeIntake {
 export type ProofKind = 'link' | 'file' | 'text'
 
 export interface PathStep {
+  kind?: 'lesson' | 'project' | 'leetcode' | 'reading' | 'interview'
+  resources?: Array<{ label: string; url: string; kind: 'video' | 'reading' | 'exercise' }>
   id: string
   project: string
   title: string
