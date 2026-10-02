@@ -12,7 +12,7 @@ interface StructuredRequest {
   maxTokens?: number
   image?: ImageInput
   webSearch?: boolean
-  reasoningEffort?: 'none' | 'low'
+  reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
 }
 
 export const hasProvider = () => Boolean(Deno.env.get('OPENAI_API_KEY') || Deno.env.get('ANTHROPIC_API_KEY'))

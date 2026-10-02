@@ -1,6 +1,14 @@
 import { corsHeaders, generateStructured, hasProvider } from '../_shared/ai.ts'
 
 const resource = { type: 'object', additionalProperties: false, required: ['title', 'provider', 'url', 'skill', 'kind'], properties: { title: { type: 'string' }, provider: { type: 'string' }, url: { type: 'string' }, skill: { type: 'string' }, kind: { type: 'string', enum: ['video', 'reading', 'exercise'] } } }
+const isUsefulResourceUrl = (value: unknown) => {
+  try {
+    const url = new URL(String(value))
+    if (url.protocol !== 'https:') return false
+    const path = `${url.pathname}${url.search}`.toLowerCase()
+    return path !== '/' && !/\/search|[?&]q=|\/docs\/?$|\/documentation\/?$|\/reference\/?$/.test(path)
+  } catch { return false }
+}
 const schema = {
   type: 'object', additionalProperties: false, required: ['steps'],
   properties: { steps: { type: 'array', minItems: 8, maxItems: 16, items: { type: 'object', additionalProperties: false,
@@ -16,12 +24,12 @@ const prompt = (body: Record<string, unknown>) => `Build a custom, evidence-led 
 
 DESIGN RULES:
 - Return 8-16 steps, but choose the count and sections based on this person. Do not use a fixed template, fixed three-project structure, or identical sequence across roles.
-- Use the supplied roadmap projects when strong; improve their execution detail rather than inventing unrelated work. For each project step, set projectId to the matching roadmap project id. Use an empty string for non-project steps.
+- Use the supplied roadmap projects and their user, problem, scope, milestones, deliverables, acceptance criteria, and recruiter signal. Preserve that specificity in the actions and checks rather than collapsing a project into generic implementation steps. For each project step, set projectId to the matching roadmap project id. Use an empty string for non-project steps.
 - Skip skills already demonstrated. Add focused learning only for a consequential gap, immediately followed by applied work.
 - Include at least one networking step placed where expert feedback changes the work—not as generic end-of-plan outreach. Specify the role/community to approach, where to find them, what useful artifact to share, the exact question to ask, and how to apply the response. Never invent a person.
 - Include at least two feedback loops where the student submits a decision, draft, test result, or reflection. Checks must test the student's reasoning and evidence, so the next step can change based on their input.
 - Project actions must specify the user/operator, inputs or data source, core behavior, failure cases, measurable result, and the insight a hiring reviewer should take away. Avoid clones, generic dashboards, portfolio sites, and vague AI wrappers.
-- Attach only useful, direct resources: official documentation, a primary dataset, a reputable course/module, or a role-relevant exercise. Use web research to verify every URL. Never use search-result pages, generic homepages, made-up URLs, or generic “watch tutorials” suggestions. A step may have zero resources if none can be verified.
+- Reuse the roadmap's verified courses where they match the step, and research additional resources as needed. Learning resources must be direct links to specific YouTube videos/playlists, Coursera/edX/DeepLearning.AI courses, university lectures, or hands-on modules that teach the skill. Do not use framework documentation, API references, search-result pages, generic homepages, marketing pages, made-up URLs, or generic “watch tutorials” suggestions. Primary datasets may be linked only on build steps and never presented as instruction. Verify every URL with web research; a step may have zero resources if none can be verified.
 - A self-completed step may only be reading/setup. Projects, networking, reflections, tests, and interview practice require evidence.
 - No calendar dates or filler. Titles are imperative. Every action starts with a verb. Every proof request says exactly what to submit. Every check is objectively reviewable from that submission.
 - Use public, synthetic, or student-owned data. Never invent company facts or imply access to internal systems.
@@ -36,10 +44,11 @@ Deno.serve(async (request) => {
     if (!body?.mission?.id || !body?.role || !body?.resume || !body?.roadmap) return Response.json({ error: 'Missing path context' }, { status: 400, headers: corsHeaders })
     if (!hasProvider()) return Response.json({ error: 'No AI provider configured' }, { status: 503, headers: corsHeaders })
     const trimmed = { ...body, resume: { ...body.resume, text: String(body.resume.text ?? '').slice(0, 12000) } }
-    const result = await generateStructured({ prompt: prompt(trimmed), schema, name: 'submit_path', maxTokens: 8000, webSearch: true, reasoningEffort: 'low' })
+    const result = await generateStructured({ prompt: prompt(trimmed), schema, name: 'submit_path', maxTokens: 10000, webSearch: true, reasoningEffort: 'high' })
     const validProjectIds = new Set((body.roadmap.projects ?? []).map((project: { id?: string }) => project.id).filter(Boolean))
-    const steps = result.steps.map((step: Record<string, unknown>, index: number) => ({
+    const steps = result.steps.map((step: Record<string, unknown> & { resources?: Array<{ url?: string }> }, index: number) => ({
       ...step, id: `s${index + 1}`,
+      resources: (step.resources ?? []).filter((item) => isUsefulResourceUrl(item.url)),
       projectId: validProjectIds.has(step.projectId) ? step.projectId : undefined,
       minCommits: Number(step.minCommits) > 0 ? step.minCommits : undefined,
     }))

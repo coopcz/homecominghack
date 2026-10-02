@@ -89,6 +89,10 @@ export function buildCuratedRoadmap(
     ]
   const projects = concepts.map(([title,brief,outcome,kind,flow],index) => ({
     id:`project-${index+1}`, title:title as string, brief:brief as string, proof:'Repository, designed output preview, README, and measured acceptance report.',
+    user: `A ${mission.themes[0]} operator or end user who needs a reliable decision, not another demo`,
+    problem: `${String(brief)} The current risk is that the decision remains slow, opaque, or untested.`,
+    scope: `In scope: one reproducible end-to-end workflow using public or synthetic data, explicit failure handling, and measurable evaluation. Out of scope: production deployment, proprietary ${mission.company} data, and a broad feature suite.`,
+    recruiterSignal: `Shows a ${mission.company} reviewer that the candidate can turn an ambiguous ${mission.themes[0]} problem into scoped, testable ${role} work and explain the tradeoffs.`,
     tags:index===0?[skill,'data quality']:[skill,index===1?'system design':'evaluation'], level:(['focused','system','flagship'] as const)[index], outcome:outcome as string,
     requirementIds:index===0?['r1']:index===1?['r1','r2']:['r1','r2','r3'], preview:{kind:kind as 'pipeline'|'system'|'simulation',eyebrow:['Focused first build','Deeper system','Ambitious flagship'][index],metrics:[{label:'Primary signal',value:['Valid rows','Handled states','Scenarios passed'][index]},{label:'Evidence',value:['Quality report','Failure log','Evaluation brief'][index]}],flow:flow as string[]},
     milestones:['Define the smallest credible data and behavior contract','Build the core path plus explicit failure states','Document results, tradeoffs, and a concise demo'],
@@ -111,6 +115,7 @@ export function buildCuratedRoadmap(
     version: 2,
     targetJob: { title: role, company: mission.company, retrievedAt: new Date().toISOString(), status: 'inferred' },
     requirements,
+    recruiterSignals: requirements.map((requirement) => ({ signal: requirement.label, whyItMatters: requirement.excerpt, evidence: `A project artifact, measured result, and interview explanation demonstrating ${requirement.label.toLowerCase()}.`, source: 'inferred' as const })),
     projects,
     credentials: [
       `A portfolio case study tying decisions to ${mission.mission.toLowerCase()}`,
@@ -118,9 +123,9 @@ export function buildCuratedRoadmap(
       'Five customer or domain-expert conversations summarized into actionable insights',
     ],
     courses: [
-      { title: 'Build the domain foundation', provider: 'Official industry documentation', outcome: `Create a glossary and system map for ${mission.themes.slice(0, 2).join(' + ')}.` },
-      { title: `Applied ${skill}`, provider: 'A project-based university or recognized MOOC course', outcome: 'Ship the second roadmap project as the capstone.' },
-      { title: 'Communicating technical work', provider: 'Your university career center', outcome: 'Turn the work into a crisp demo and evidence-led story.' },
+      { title: 'CS50x: Introduction to Computer Science', provider: 'Harvard / edX', url: 'https://cs50.harvard.edu/x/', skill: 'Problem solving and implementation', format: 'course' as const, outcome: `Use the relevant problem sets to strengthen the implementation discipline behind ${projects[0].title}.` },
+      { title: 'Git and GitHub for Beginners', provider: 'freeCodeCamp.org', url: 'https://www.youtube.com/watch?v=RGOj5yH7evk', skill: 'Version control and project communication', format: 'youtube' as const, outcome: 'Publish a legible commit history and reviewer-ready repository.' },
+      { title: 'The Missing Semester of Your CS Education', provider: 'MIT', url: 'https://missing.csail.mit.edu/', skill: 'Developer tooling', format: 'interactive' as const, outcome: 'Create a reproducible workflow, test harness, and concise demo.' },
     ],
     peopleStrategy: [
       `Find 2 ${role}s at ${mission.company}; ask one specific question about how they measure impact.`,

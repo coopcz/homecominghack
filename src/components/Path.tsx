@@ -123,7 +123,7 @@ const nodeMeta = {
   reflection: { label: 'Feedback checkpoint', icon: RefreshCw },
 }
 
-function StepModal({ step, record, locked, busy, onClose, onSubmit }: { step: PathStep; record?: StepRecord; locked: boolean; busy: boolean; onClose: () => void; onSubmit: (proof: ProofInput) => void }) {
+function StepModal({ step, project, recruiterSignals = [], record, locked, busy, onClose, onSubmit }: { step: PathStep; project?: RoadmapProject; recruiterSignals?: Array<{ signal: string; whyItMatters: string; evidence: string }>; record?: StepRecord; locked: boolean; busy: boolean; onClose: () => void; onSubmit: (proof: ProofInput) => void }) {
   const dialog = useRef<HTMLDialogElement>(null)
   const meta = nodeMeta[stepKind(step)]
   const Icon = meta.icon
@@ -143,6 +143,17 @@ function StepModal({ step, record, locked, busy, onClose, onSubmit }: { step: Pa
       <p className="eyebrow">{meta.label} · {step.points} XP</p>
       <h2 id="node-modal-title">{step.title}</h2>
       <p className="node-modal-summary">{step.summary}</p>
+      {project && <div className="project-guidance">
+        <h3>What you are building—and why</h3>
+        {project.user && <p><strong>User:</strong> {project.user}</p>}
+        {project.problem && <p><strong>Problem:</strong> {project.problem}</p>}
+        {project.scope && <p><strong>Scope:</strong> {project.scope}</p>}
+        {project.recruiterSignal && <p><strong>What this proves to recruiters:</strong> {project.recruiterSignal}</p>}
+        {!!project.milestones?.length && <><h4>Milestones</h4><ol className="action-list">{project.milestones.map((item) => <li key={item}>{item}</li>)}</ol></>}
+        {!!project.deliverables?.length && <><h4>Deliverables</h4><ul>{project.deliverables.map((item) => <li key={item}>{item}</li>)}</ul></>}
+        {!!project.acceptanceCriteria?.length && <><h4>Definition of done</h4><ul>{project.acceptanceCriteria.map((item) => <li key={item}>{item}</li>)}</ul></>}
+      </div>}
+      {!project && recruiterSignals.length > 0 && step.requirementIds?.length ? <div className="project-guidance"><h3>What recruiters are looking for</h3>{recruiterSignals.slice(0, 3).map((item) => <p key={item.signal}><strong>{item.signal}:</strong> {item.whyItMatters} <em>{item.evidence}</em></p>)}</div> : null}
       {locked && <p className="node-preview"><Lock size={15} /> Preview this step. Complete the earlier nodes to submit your proof.</p>}
       <h3>Resources for this step</h3>
       {resources.length ? <div className="node-resources">{resources.map((resource) => <a key={resource.url} href={resource.url} target="_blank" rel="noreferrer">{resource.kind === 'video' ? <Play size={19} /> : resource.kind === 'exercise' ? <Code2 size={19} /> : <BookOpen size={19} />}<span><small>{resource.provider} · {resource.skill}</small>{resource.title}</span><ExternalLink size={16} /></a>)}</div> : <p className="resource-empty">No verified resource is attached to this step yet.</p>}
@@ -154,7 +165,7 @@ function StepModal({ step, record, locked, busy, onClose, onSubmit }: { step: Pa
   </dialog>
 }
 
-export function PathView({ steps, projects = [], records, busyId, onSubmit }: { steps: PathStep[]; projects?: RoadmapProject[]; records: Record<string, StepRecord>; busyId: string | null; onSubmit: (step: PathStep, proof: ProofInput) => void }) {
+export function PathView({ steps, projects = [], recruiterSignals = [], records, busyId, onSubmit }: { steps: PathStep[]; projects?: RoadmapProject[]; recruiterSignals?: Array<{ signal: string; whyItMatters: string; evidence: string }>; records: Record<string, StepRecord>; busyId: string | null; onSubmit: (step: PathStep, proof: ProofInput) => void }) {
   const current = steps.findIndex((step) => records[step.id]?.status !== 'verified')
   const [open, setOpen] = useState<string | null>(null)
   const selectedIndex = steps.findIndex((step) => step.id === open)
@@ -181,6 +192,6 @@ export function PathView({ steps, projects = [], records, busyId, onSubmit }: { 
         </div>
       </li>
     })}</ol>
-    {selected && <StepModal key={selected.id} step={selected} record={records[selected.id]} locked={current !== -1 && selectedIndex > current} busy={busyId === selected.id} onClose={() => setOpen(null)} onSubmit={(proof) => onSubmit(selected, proof)} />}
+    {selected && <StepModal key={selected.id} step={selected} project={selected.projectId ? projects.find((item) => item.id === selected.projectId) : undefined} recruiterSignals={recruiterSignals} record={records[selected.id]} locked={current !== -1 && selectedIndex > current} busy={busyId === selected.id} onClose={() => setOpen(null)} onSubmit={(proof) => onSubmit(selected, proof)} />}
   </div>
 }

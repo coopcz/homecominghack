@@ -48,6 +48,10 @@ export interface RoadmapProject {
   milestones?: string[]
   deliverables?: string[]
   acceptanceCriteria?: string[]
+  user?: string
+  problem?: string
+  scope?: string
+  recruiterSignal?: string
 }
 
 export interface JobRequirement { id: string; label: string; excerpt: string; category: 'skill' | 'experience' | 'responsibility'; source: 'official' | 'inferred' }
@@ -63,7 +67,8 @@ export interface Roadmap {
   roleRationale: string
   projects: RoadmapProject[]
   credentials: string[]
-  courses: { title: string; provider: string; outcome: string }[]
+  courses: { title: string; provider: string; url?: string; skill?: string; outcome: string; format?: 'youtube' | 'course' | 'interactive' }[]
+  recruiterSignals?: Array<{ signal: string; whyItMatters: string; evidence: string; source: 'official-job' | 'company-research' | 'inferred' }>
   peopleStrategy: string[]
   generatedBy: 'ai' | 'curated'
   version?: 2

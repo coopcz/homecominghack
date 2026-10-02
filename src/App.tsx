@@ -59,6 +59,7 @@ export default function App() {
   const [discovering, setDiscovering] = useState(false)
   const [planBusy, setPlanBusy] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
+  const [missionTab, setMissionTab] = useState<MissionTab>('roadmap')
 
   useEffect(() => {
     const saved = localStorage.getItem('northstar-demo-v4')
@@ -159,15 +160,19 @@ export default function App() {
     let nextIntel = preloadedIntel
     let nextRoadmap = curated
     if (!isDemoMode) {
-      const [intelResult, roadmapResult] = await Promise.allSettled([
-        callFunction<CompanyIntel>('company-intel', { company: selected.company, domain: selected.domain, mission: selected.mission, role: nextRole, profile: nextProfile, jobSource }),
-        callFunction<Roadmap>('generate-roadmap', { profile: nextProfile, mission: selected, why, motivation, chosenProblem: selected.projectSeeds[0], role: nextRole, companyResearch: preloadedIntel, jobSource }),
-      ])
-      if (intelResult.status === 'fulfilled') nextIntel = withDossier(selected.id, intelResult.value)
-      if (roadmapResult.status === 'fulfilled') {
-        const generated = roadmapResult.value
+      try {
+        const researched = await callFunction<CompanyIntel>('company-intel', { company: selected.company, domain: selected.domain, mission: selected.mission, role: nextRole, profile: nextProfile, jobSource })
+        nextIntel = withDossier(selected.id, researched)
+        setIntel(nextIntel)
+      } catch { /* The verified local dossier remains available to roadmap generation. */ }
+      try {
+        const generated = await callFunction<Roadmap>('generate-roadmap', {
+          profile: nextProfile, resume: nextResume ? { skills: nextResume.skills, experience: nextResume.experience, text: nextResume.text.slice(0, 10000) } : null,
+          github: github ? { topLanguages: github.topLanguages, repositories: github.repositories.slice(0, 6) } : null,
+          mission: selected, why, motivation, chosenProblem: selected.projectSeeds[0], role: nextRole, companyResearch: nextIntel, jobSource,
+        })
         if (generated.version === 2 && generated.targetJob && generated.requirements?.length && generated.projects.every((project) => project.preview && project.acceptanceCriteria?.length)) nextRoadmap = generated
-      }
+      } catch { /* Keep the detailed curated roadmap when live generation is unavailable. */ }
     }
     setIntel(nextIntel); setRoadmap(nextRoadmap)
     const intake = nextResume ?? { text: '', skills: [...new Set([...nextProfile.skills, ...(github?.topLanguages ?? [])])], experience: [] }
@@ -185,7 +190,7 @@ export default function App() {
   const matchedMissions = useMemo(() => matchedIds.map((id) => ranked.find((mission) => mission.id === id)).filter((mission): mission is Mission => Boolean(mission)), [matchedIds, ranked])
 
   return <div className="app-shell">
-    {step !== 'welcome' && <Header step={step} onHome={() => go('welcome')} />}
+    {step !== 'welcome' && <Header step={step} onHome={() => go('welcome')} tab={missionTab} onTab={setMissionTab} />}
     <AnimatePresence mode="wait">
       {step === 'welcome' && <Welcome key="welcome" onStart={() => go('interests')} />}
       {step === 'interests' && <InterestsStep key="interests" profile={profile} onComplete={(interests) => { setProfile({ ...profile, interests }); go('profile') }} />}
@@ -197,7 +202,7 @@ export default function App() {
       {step === 'why' && <WhyStep key="why" mission={selected} value={why} onComplete={finishWhy} />}
       {step === 'confirm' && <PlanConfirmation key="confirm" mission={selected} profile={profile} role={role} resume={resume} onBack={() => go('why')} onGenerate={generatePlan} />}
       {step === 'match' && (!roadmap ? <MatchLoading key="loading" mission={selected} /> : <MatchReveal key="match" mission={selected} roadmap={roadmap} intel={intel} enhancing={planBusy} onBack={() => go('problem')} onStart={() => go('mission')} />)}
-      {step === 'mission' && roadmap && <MissionControl key="mission-control" profile={profile} why={why} motivation={motivation} resume={resume} setResume={setResume} setPath={setPath} setGithub={setGithub} mission={selected} roadmap={roadmap} intel={intel} path={path} records={records} setRecords={setRecords} github={github} progress={progress} setProgress={setProgress} onEmployer={() => go('employer')} notify={notify} />}
+      {step === 'mission' && roadmap && <MissionControl key="mission-control" tab={missionTab} profile={profile} why={why} motivation={motivation} resume={resume} setResume={setResume} setPath={setPath} setGithub={setGithub} mission={selected} roadmap={roadmap} intel={intel} path={path} records={records} setRecords={setRecords} github={github} progress={progress} setProgress={setProgress} onEmployer={() => go('employer')} notify={notify} />}
       {step === 'employer' && roadmap && <EmployerView key="employer" profile={profile} mission={selected} roadmap={roadmap} why={why} motivation={motivation} resume={resume} github={github} progress={progress} path={path} records={records} onBack={() => go('mission')} />}
     </AnimatePresence>
     <AnimatePresence>{toast && <motion.div className="toast" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 18 }}>{toast}</motion.div>}</AnimatePresence>
@@ -205,12 +210,40 @@ export default function App() {
 }
 
 function Brand() { return <span className="brand"><span className="brand-mark">✦</span> northstar</span> }
-function Header({ step, onHome }: { step: AppStep; onHome: () => void }) {
+type MissionTab = 'roadmap' | 'people' | 'information' | 'feed'
+const missionTabs: { id: MissionTab; label: string; icon: React.ReactNode }[] = [
+  { id: 'roadmap', label: 'Roadmap', icon: <Target size={16} /> }, { id: 'people', label: 'People worth learning from', icon: <UsersRound size={16} /> },
+  { id: 'information', label: 'Relevant information', icon: <Radar size={16} /> }, { id: 'feed', label: 'Company feed', icon: <Newspaper size={16} /> },
+]
+function Header({ step, onHome, tab, onTab }: { step: AppStep; onHome: () => void; tab: MissionTab; onTab: (tab: MissionTab) => void }) {
   const index = flow.indexOf(step)
-  return <header className="site-header"><button className="brand-button" onClick={onHome}><Brand /></button><div className="journey-progress"><i style={{ width: `${(index / (flow.length - 1)) * 100}%` }} /></div><span className="step-count">{String(index).padStart(2, '0')} / {String(flow.length - 1).padStart(2, '0')}</span></header>
+  const tabbed = step === 'mission'
+  return <header className={`site-header${tabbed ? ' has-tabs' : ''}`}><button className="brand-button" onClick={onHome}><Brand /></button>{tabbed ? <nav className="header-tabs" aria-label="Mission plan sections">{missionTabs.map((item) => <button className={tab === item.id ? 'active' : ''} onClick={() => onTab(item.id)} key={item.id}>{item.icon} {item.label}</button>)}</nav> : <div className="journey-progress"><i style={{ width: `${(index / (flow.length - 1)) * 100}%` }} /></div>}<span className="step-count">{String(index).padStart(2, '0')} / {String(flow.length - 1).padStart(2, '0')}</span></header>
 }
 function Page({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return <motion.main className={`page ${className}`} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: .28 }}>{children}</motion.main>
+}
+const sparkles = [
+  { x: -250, y: 30, size: 14, delay: 0 }, { x: 240, y: 50, size: 12, delay: .6 }, { x: -150, y: -30, size: 9, delay: 1.1 },
+  { x: 170, y: -20, size: 10, delay: .3 }, { x: -320, y: 110, size: 8, delay: .9 }, { x: 330, y: 120, size: 9, delay: 1.4 },
+  { x: -80, y: 150, size: 7, delay: 1.7 }, { x: 95, y: 160, size: 8, delay: .2 },
+]
+function DestinationHero({ mission, role }: { mission: Mission; role: string }) {
+  const rise = typeof window === 'undefined' ? 800 : window.innerHeight
+  const land = 2.8
+  return <div className="destination-hero" aria-label={`${mission.company}, ${role}`}>
+    <motion.div className="destination-rays" aria-hidden="true" initial={{ opacity: 0, scale: .4 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: land - .2, duration: 1.6, ease: 'easeOut' }} />
+    <motion.div className="destination-glow" aria-hidden="true" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: land - .4, duration: 1.4 }} />
+    {sparkles.map((sparkle, index) => <motion.span className="destination-sparkle" aria-hidden="true" key={index} style={{ left: `calc(50% + ${sparkle.x}px)`, top: `calc(50% + ${sparkle.y - 40}px)`, fontSize: sparkle.size }} initial={{ opacity: 0, scale: 0 }} animate={{ opacity: [0, 1, .25, 1, 0], scale: [0, 1.2, .8, 1.1, 0] }} transition={{ delay: land + sparkle.delay, duration: 3.2, repeat: Infinity, repeatDelay: .4 }}>✦</motion.span>)}
+    <motion.div className="destination-ship" initial={{ y: rise, scale: .45, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} transition={{ duration: land, ease: [.5, .02, .2, 1], opacity: { duration: .6 } }}>
+      <motion.i className="destination-trail" aria-hidden="true" initial={{ scaleY: 1, opacity: .9 }} animate={{ scaleY: 0, opacity: 0 }} transition={{ duration: land + .4, ease: 'easeOut' }} />
+      <motion.i className="destination-ring" aria-hidden="true" initial={{ scale: .6, opacity: 0 }} animate={{ scale: [0.6, 2.6], opacity: [.8, 0] }} transition={{ delay: land - .1, duration: 1.3, ease: 'easeOut' }} />
+      <motion.div className="destination-logo" animate={{ y: [0, -7, 0] }} transition={{ delay: land + .6, duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}><CompanyLogo mission={mission} /></motion.div>
+    </motion.div>
+    <motion.div className="destination-name" initial={{ opacity: 0, y: 14, letterSpacing: '.3em' }} animate={{ opacity: 1, y: 0, letterSpacing: '-.04em' }} transition={{ delay: land + .1, duration: 1.1, ease: 'easeOut' }}>
+      <strong>{mission.company}</strong><span><Target size={15} /> {role}</span>
+    </motion.div>
+  </div>
 }
 function CompanyLogo({ mission, className = '' }: { mission: Mission; className?: string }) {
   return mission.logoUrl ? <img className={`company-logo ${className}`} src={mission.logoUrl} alt={`${mission.company} logo`} /> : <span className={`company-monogram ${className}`}>{mission.company.slice(0, 2).toUpperCase()}</span>
@@ -332,9 +365,8 @@ function GithubConnect({ github, setGithub, setProgress, close, notify }: { gith
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>
 const isStepEvent = (event: ProgressEvent) => !['github-connect', 'github-commits'].includes(event.id)
 
-function MissionControl({ mission, profile, why, motivation, resume, setResume, setPath, setGithub, roadmap, intel, path, records, setRecords, github, progress, setProgress, onEmployer, notify }: { mission: Mission; profile: StudentProfile; why: string; motivation: string; resume: ResumeIntake | null; setResume: SetState<ResumeIntake | null>; setPath: SetState<PathStep[]>; setGithub: (profile: GithubProfile) => void; roadmap: Roadmap; intel: CompanyIntel; path: PathStep[]; records: Record<string, StepRecord>; setRecords: SetState<Record<string, StepRecord>>; github: GithubProfile | null; progress: ProgressEvent[]; setProgress: SetState<ProgressEvent[]>; onEmployer: () => void; notify: (message: string) => void }) {
+function MissionControl({ tab, mission, profile, why, motivation, resume, setResume, setPath, setGithub, roadmap, intel, path, records, setRecords, github, progress, setProgress, onEmployer, notify }: { mission: Mission; profile: StudentProfile; why: string; motivation: string; resume: ResumeIntake | null; setResume: SetState<ResumeIntake | null>; setPath: SetState<PathStep[]>; setGithub: (profile: GithubProfile) => void; roadmap: Roadmap; intel: CompanyIntel; path: PathStep[]; records: Record<string, StepRecord>; setRecords: SetState<Record<string, StepRecord>>; github: GithubProfile | null; progress: ProgressEvent[]; setProgress: SetState<ProgressEvent[]>; onEmployer: () => void; notify: (message: string) => void; tab: MissionTab }) {
   const [busyId, setBusyId] = useState<string | null>(null)
-  const [tab, setTab] = useState<'roadmap' | 'people' | 'information' | 'feed'>('roadmap')
   const [showGithub, setShowGithub] = useState(false)
   const [building, setBuilding] = useState(false)
   const [showIntake, setShowIntake] = useState(false)
@@ -395,12 +427,11 @@ function MissionControl({ mission, profile, why, motivation, resume, setResume, 
   }
 
   return <Page className="mission-control">{showGithub && <GithubConnect github={github} setGithub={setGithub} setProgress={setProgress} close={() => setShowGithub(false)} notify={notify} />}
-    <div className="roadmap-destination"><div className="mission-lockup"><CompanyLogo mission={mission} /><span>{mission.company}<small>{roadmap.role}</small></span></div></div>
     <aside className="floating-progress" aria-label="Career progress"><div className="floating-level"><span>Level {level}</span><strong>{levelNames[Math.min(level - 1, 4)]}</strong><small>{xp} XP · {verifiedCount}/{visiblePath.length} steps</small></div><div className="floating-xp" role="progressbar" aria-label="Progress to next level" aria-valuenow={xp % 100} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${xp % 100}%` }} /></div><small>{100 - (xp % 100)} XP to level {level + 1}</small><button onClick={() => setShowGithub(true)}><Github size={14} />{github ? 'View GitHub' : 'Connect GitHub'}</button></aside>
-    <nav className="mission-tabs" aria-label="Mission plan sections"><button className={tab === 'roadmap' ? 'active' : ''} onClick={() => setTab('roadmap')}><Target size={16} /> Roadmap</button><button className={tab === 'people' ? 'active' : ''} onClick={() => setTab('people')}><UsersRound size={16} /> People worth learning from</button><button className={tab === 'information' ? 'active' : ''} onClick={() => setTab('information')}><Radar size={16} /> Relevant information</button><button className={tab === 'feed' ? 'active' : ''} onClick={() => setTab('feed')}><Newspaper size={16} /> Company feed</button></nav>
+    <DestinationHero mission={mission} role={roadmap.role} />
     {tab === 'roadmap' && <section className="quest-section">
       <div className="roadmap-caption"><p className="eyebrow">Your path to {mission.company}</p><h1>One step closer.</h1><p>Learn, build, practice. Tap a node to see your next move.</p></div>
-      {showIntake ? <ResumeIntakeForm mission={mission} role={roadmap.role} busy={building} initial={resume} onSubmit={buildPath} /> : <><PathView steps={visiblePath} projects={roadmap.projects} records={records} busyId={busyId} onSubmit={submitProof} /><div className="path-actions"><button className="secondary" onClick={() => setShowIntake(true)}>Personalize with my resume</button><button className="skip-link path-reset" onClick={restart}>Rebuild my path</button></div></>}
+      {showIntake ? <ResumeIntakeForm mission={mission} role={roadmap.role} busy={building} initial={resume} onSubmit={buildPath} /> : <><PathView steps={visiblePath} projects={roadmap.projects} recruiterSignals={roadmap.recruiterSignals} records={records} busyId={busyId} onSubmit={submitProof} /><div className="path-actions"><button className="secondary" onClick={() => setShowIntake(true)}>Personalize with my resume</button><button className="skip-link path-reset" onClick={restart}>Rebuild my path</button></div></>}
     </section>}
     {tab !== 'roadmap' && <ResearchSection mission={mission} intel={intel} tab={tab} />}
     <section className="employer-cta"><div><Eye /><p className="eyebrow">The other side of the signal</p><h2>See what the employer sees.</h2></div><button className="primary" onClick={onEmployer}>Flip the view <ArrowRight size={18} /></button></section></Page>
