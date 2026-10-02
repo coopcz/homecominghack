@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  ArrowLeft, ArrowRight, BriefcaseBusiness, Check, Circle,
+  AlertCircle, ArrowLeft, ArrowRight, BriefcaseBusiness, Check, Circle,
   ExternalLink, Eye, Github, GraduationCap, Heart, LoaderCircle,
-  LockKeyhole, Newspaper, Plus, Radar, Rocket, Sparkles, Target, UsersRound, X,
+  LockKeyhole, Newspaper, Plus, Radar, Rocket, Sparkles, Target, Upload, UsersRound, X,
 } from 'lucide-react'
 import { fallbackIntel, missions as companyCatalog } from './lib/data'
 import { buildCuratedRoadmap, inferRole, rankMissions } from './lib/matching'
 import { buildCuratedPath, verifyLocally, type ProofInput } from './lib/path'
-import { PathView, ResumeIntakeForm } from './components/Path'
+import { PathView } from './components/Path'
+import { buildIntake, detectSkills, extractFileText } from './lib/resume'
 import { callFunction, isDemoMode } from './lib/supabase'
-import type { AppStep, CompanyIntel, CompanyRecommendation, GithubProfile, Mission, PathStep, ProgressEvent, ResumeIntake, Roadmap, StepRecord, StudentProfile } from './lib/types'
+import type { AppStep, CompanyIntel, CompanyRecommendation, GithubProfile, MatchInsight, Mission, PathStep, ProgressEvent, ResumeIntake, Roadmap, StepRecord, StudentProfile } from './lib/types'
 
 const interestOptions = [
   'Artificial intelligence', 'Humanoid robots', 'Healthcare', 'Biotech', 'E-commerce',
@@ -22,7 +23,7 @@ const motivationOptions = [
   { label: 'Starting from scratch', detail: 'Turning ambiguity into the first useful version.' },
   { label: 'Improving a system', detail: 'Making important infrastructure work measurably better.' },
 ]
-const flow: AppStep[] = ['welcome', 'interests', 'profile', 'motivation', 'missions', 'problem', 'why', 'match', 'mission', 'employer']
+const flow: AppStep[] = ['welcome', 'interests', 'profile', 'motivation', 'signals', 'missions', 'problem', 'why', 'match', 'mission', 'employer']
 const emptyProfile: StudentProfile = { id: crypto.randomUUID(), university: '', major: '', skills: [], interests: [] }
 
 const demoGithub = (login: string): GithubProfile => ({
@@ -51,6 +52,8 @@ export default function App() {
   const [resume, setResume] = useState<ResumeIntake | null>(null)
   const [path, setPath] = useState<PathStep[]>([])
   const [records, setRecords] = useState<Record<string, StepRecord>>({})
+  const [matchInsights, setMatchInsights] = useState<MatchInsight[]>([])
+  const [commitmentBusy, setCommitmentBusy] = useState(false)
   const [discovering, setDiscovering] = useState(false)
   const [planBusy, setPlanBusy] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -82,30 +85,46 @@ export default function App() {
   function go(next: AppStep) { setStep(next); window.scrollTo({ top: 0, behavior: 'smooth' }) }
   function notify(message: string) { setToast(message); window.setTimeout(() => setToast(null), 2800) }
 
-  async function finishMotivation(value: string) {
-    setMotivation(value); setDiscovering(true)
-    const localRanked = rankMissions({ ...profile, skills: [...profile.skills, value] }, companyCatalog).slice(0, 10)
+  async function discoverCompanies(nextResume: ResumeIntake | null, nextGithub: GithubProfile | null) {
+    setResume(nextResume); setGithub(nextGithub); setDiscovering(true)
+    const signalSkills = [...profile.skills, ...(nextResume?.skills ?? []), ...(nextGithub?.topLanguages ?? []), motivation]
+    const matchingProfile = { ...profile, skills: [...new Set(signalSkills)] }
+    setProfile(matchingProfile)
+    const localRanked = rankMissions(matchingProfile, companyCatalog).slice(0, 14)
     let nextRanked = localRanked
     let reasons: Record<string, string> = {}
     if (!isDemoMode) {
       try {
         const result = await callFunction<CompanyRecommendation>('recommend-companies', {
-          profile, motivation: value,
-          catalog: companyCatalog.map(({ id, company, mission, themes, projectSeeds }) => ({ id, company, mission, themes, projectSeeds })),
+          profile: matchingProfile, motivation,
+          resume: nextResume ? { skills: nextResume.skills, experience: nextResume.experience, text: nextResume.text.slice(0, 7000) } : null,
+          github: nextGithub ? { topLanguages: nextGithub.topLanguages, repositories: nextGithub.repositories.slice(0, 6) } : null,
+          catalog: companyCatalog.map(({ id, company, mission, themes, projectSeeds, locations }) => ({ id, company, mission, themes, projectSeeds, locations })),
         })
         const fromAI = result.missionIds.map((id) => companyCatalog.find((mission) => mission.id === id)).filter((mission): mission is Mission => Boolean(mission))
-        nextRanked = [...fromAI, ...localRanked.filter((mission) => !result.missionIds.includes(mission.id))].slice(0, 10)
+        nextRanked = [...fromAI, ...localRanked.filter((mission) => !result.missionIds.includes(mission.id))].slice(0, 14)
         reasons = result.reasons
       } catch { notify('Using the relevance model built into the demo.') }
     } else await new Promise((resolve) => window.setTimeout(resolve, 480))
     setRanked(nextRanked); setRecommendationReasons(reasons); setDeckIndex(0); setMatchedIds([]); setDiscovering(false); go('missions')
   }
 
-  function voteMission(save: boolean) {
+  async function voteMission(save: boolean) {
     const current = ranked[deckIndex]
     const nextMatches = save && !matchedIds.includes(current.id) ? [...matchedIds, current.id] : matchedIds
     if (save) setMatchedIds(nextMatches)
-    if (nextMatches.length === 3) { go('problem'); return }
+    if (nextMatches.length === 3) {
+      const matches = nextMatches.map((id) => ranked.find((mission) => mission.id === id)).filter((mission): mission is Mission => Boolean(mission))
+      setCommitmentBusy(true); setMatchInsights([]); go('problem')
+      const fallback = matches.map((mission) => ({ missionId: mission.id, problem: mission.projectSeeds[0], founderReason: mission.founderStory, whyYou: recommendationReasons[mission.id] || `${mission.themes.slice(0, 2).join(' and ')} connect to your interests and background.`, sourceUrl: `https://${mission.domain}` }))
+      if (!isDemoMode) {
+        try {
+          const result = await callFunction<{ insights: MatchInsight[] }>('research-matches', { missions: matches, profile, resume: resume ? { skills: resume.skills, experience: resume.experience } : null, github: github ? { topLanguages: github.topLanguages } : null, motivation })
+          setMatchInsights(result.insights.length === 3 ? result.insights : fallback)
+        } catch { setMatchInsights(fallback); notify('Using verified catalog stories for this comparison.') }
+      } else { await new Promise((resolve) => window.setTimeout(resolve, 650)); setMatchInsights(fallback) }
+      setCommitmentBusy(false); return
+    }
     setDeckIndex((index) => (index + 1) % ranked.length)
   }
 
@@ -124,7 +143,17 @@ export default function App() {
         nextRoadmap = await callFunction<Roadmap>('generate-roadmap', { profile, mission: selected, why: value, motivation, chosenProblem: selected.projectSeeds[0], role: nextRole, companyResearch: nextIntel })
       } catch { notify('Using the evidence-led curated plan.') }
     } else await new Promise((resolve) => window.setTimeout(resolve, 850))
-    setIntel(nextIntel); setRoadmap(nextRoadmap); setPlanBusy(false)
+    setIntel(nextIntel); setRoadmap(nextRoadmap)
+    const intake = resume ?? { text: '', skills: [...new Set([...profile.skills, ...(github?.topLanguages ?? [])])], experience: [] }
+    let nextPath = buildCuratedPath(profile, intake, selected, nextRole)
+    if (!isDemoMode) {
+      try {
+        const result = await callFunction<{ steps: PathStep[] }>('generate-path', { profile, resume: intake, role: nextRole, why: value, motivation, mission: selected, github })
+        if (result.steps?.length) nextPath = result.steps
+      } catch { notify('Using the built-in path builder.') }
+    }
+    setPath(nextPath)
+    setPlanBusy(false)
   }
 
   const matchedMissions = useMemo(() => matchedIds.map((id) => ranked.find((mission) => mission.id === id)).filter((mission): mission is Mission => Boolean(mission)), [matchedIds, ranked])
@@ -135,12 +164,13 @@ export default function App() {
       {step === 'welcome' && <Welcome key="welcome" onStart={() => go('interests')} />}
       {step === 'interests' && <InterestsStep key="interests" profile={profile} onComplete={(interests) => { setProfile({ ...profile, interests }); go('profile') }} />}
       {step === 'profile' && <ProfileStep key="profile" profile={profile} onComplete={(major, university) => { setProfile({ ...profile, major, university, skills: [major] }); go('motivation') }} />}
-      {step === 'motivation' && <MotivationStep key="motivation" value={motivation} busy={discovering} onComplete={finishMotivation} />}
+      {step === 'motivation' && <MotivationStep key="motivation" value={motivation} busy={false} onComplete={(value) => { setMotivation(value); go('signals') }} />}
+      {step === 'signals' && <SignalsStep key="signals" resume={resume} github={github} busy={discovering} onComplete={discoverCompanies} notify={notify} />}
       {step === 'missions' && <MissionDeck key={`mission-${deckIndex}`} missions={ranked} index={deckIndex} matches={matchedMissions} reason={recommendationReasons[ranked[deckIndex]?.id]} onVote={voteMission} />}
-      {step === 'problem' && <ProblemStep key="problem" missions={matchedMissions} onSelect={(mission) => { setSelected(mission); go('why') }} />}
+      {step === 'problem' && <ProblemStep key="problem" missions={matchedMissions} insights={matchInsights} busy={commitmentBusy} onSelect={(mission) => { setSelected(mission); go('why') }} />}
       {step === 'why' && <WhyStep key="why" mission={selected} value={why} onComplete={finishWhy} />}
-      {step === 'match' && (planBusy || !roadmap ? <MatchLoading key="loading" mission={selected} /> : <MatchReveal key="match" profile={profile} mission={selected} roadmap={roadmap} onStart={() => go('mission')} />)}
-      {step === 'mission' && roadmap && <MissionControl key="mission-control" mission={selected} profile={profile} why={why} motivation={motivation} roadmap={roadmap} intel={intel} resume={resume} setResume={setResume} path={path} setPath={setPath} records={records} setRecords={setRecords} github={github} setGithub={setGithub} progress={progress} setProgress={setProgress} onEmployer={() => go('employer')} notify={notify} />}
+      {step === 'match' && (planBusy || !roadmap ? <MatchLoading key="loading" mission={selected} /> : <MatchReveal key="match" mission={selected} roadmap={roadmap} intel={intel} onBack={() => go('problem')} onStart={() => go('mission')} />)}
+      {step === 'mission' && roadmap && <MissionControl key="mission-control" mission={selected} roadmap={roadmap} intel={intel} path={path} records={records} setRecords={setRecords} github={github} progress={progress} setProgress={setProgress} onEmployer={() => go('employer')} notify={notify} />}
       {step === 'employer' && roadmap && <EmployerView key="employer" profile={profile} mission={selected} roadmap={roadmap} why={why} github={github} progress={progress} path={path} records={records} onBack={() => go('mission')} />}
     </AnimatePresence>
     <AnimatePresence>{toast && <motion.div className="toast" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 18 }}>{toast}</motion.div>}</AnimatePresence>
@@ -150,7 +180,7 @@ export default function App() {
 function Brand() { return <span className="brand"><span className="brand-mark">✦</span> northstar</span> }
 function Header({ step, onHome }: { step: AppStep; onHome: () => void }) {
   const index = flow.indexOf(step)
-  return <header className="site-header"><button className="brand-button" onClick={onHome}><Brand /></button><div className="journey-progress"><i style={{ width: `${(index / (flow.length - 1)) * 100}%` }} /></div><span className="step-count">{String(index).padStart(2, '0')} / 09</span></header>
+  return <header className="site-header"><button className="brand-button" onClick={onHome}><Brand /></button><div className="journey-progress"><i style={{ width: `${(index / (flow.length - 1)) * 100}%` }} /></div><span className="step-count">{String(index).padStart(2, '0')} / {String(flow.length - 1).padStart(2, '0')}</span></header>
 }
 function Page({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return <motion.main className={`page ${className}`} initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: .28 }}>{children}</motion.main>
@@ -182,13 +212,51 @@ function MotivationStep({ value, busy, onComplete }: { value: string; busy: bool
   return <Page className="motivation-page"><p className="eyebrow">03 · Motivation</p><h1>What excites you most?</h1><div className="answer-list">{motivationOptions.map((option) => <button className={selected === option.label ? 'selected' : ''} onClick={() => setSelected(option.label)} key={option.label}><span><strong>{option.label}</strong><small>{option.detail}</small></span><ArrowRight /></button>)}</div><button className="primary next-button" disabled={!selected || busy} onClick={() => onComplete(selected)}>{busy ? <><LoaderCircle className="spin" /> Finding relevant companies</> : <>Show me relevant missions <Radar size={18} /></>}</button></Page>
 }
 
+function SignalsStep({ resume, github, busy, onComplete, notify }: { resume: ResumeIntake | null; github: GithubProfile | null; busy: boolean; onComplete: (resume: ResumeIntake | null, github: GithubProfile | null) => void; notify: (message: string) => void }) {
+  const [text, setText] = useState(resume?.text ?? '')
+  const [fileName, setFileName] = useState(resume?.fileName)
+  const [username, setUsername] = useState(github?.login ?? '')
+  const [connected, setConnected] = useState<GithubProfile | null>(github)
+  const [reading, setReading] = useState(false)
+  const [connecting, setConnecting] = useState(false)
+  const [error, setError] = useState('')
+  async function pick(file?: File) {
+    if (!file) return
+    setReading(true); setError('')
+    try {
+      const extracted = (await extractFileText(file)).trim()
+      if (extracted.length < 40) throw new Error('We could not find enough text in that file.')
+      setText(extracted); setFileName(file.name)
+    } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not read that file.') } finally { setReading(false) }
+  }
+  async function connect() {
+    const clean = username.trim().replace(/^@/, '')
+    if (!clean) return
+    setConnecting(true); setError('')
+    try {
+      const result = isDemoMode ? await new Promise<GithubProfile>((resolve) => window.setTimeout(() => resolve(demoGithub(clean)), 500)) : await callFunction<GithubProfile>('github-profile', { username: clean })
+      setConnected(result); notify(`Connected @${result.login}`)
+    } catch (problem) { setError(problem instanceof Error ? problem.message : 'Could not connect GitHub.') } finally { setConnecting(false) }
+  }
+  function continueFlow() {
+    const skills = [...new Set([...(resume?.skills ?? []), ...detectSkills(text), ...(connected?.topLanguages ?? [])])]
+    const intake = text.trim() || skills.length ? buildIntake(text, fileName, skills) : null
+    onComplete(intake, connected)
+  }
+  return <Page className="signals-page"><div className="signals-intro"><p className="eyebrow">04 · Your signal</p><h1>Give the match more to work with.</h1><p>Your work and public code help separate a company that sounds interesting from one where you can contribute.</p></div><div className="signals-grid"><label className="signal-pane resume-drop"><Upload /><span><strong>{fileName ?? 'Upload your resume'}</strong><small>PDF, Word, or text · used only to personalize your match</small></span><input type="file" accept=".pdf,.docx,.txt,.md,application/pdf" onChange={(event) => pick(event.target.files?.[0])} /></label><div className="signal-pane github-inline"><Github /><div><strong>{connected ? `@${connected.login} connected` : 'Connect your GitHub'}</strong><small>{connected ? `${connected.publicRepos} public repositories · ${connected.topLanguages.slice(0, 3).join(', ')}` : 'We send only a trimmed public profile into matching.'}</small></div><div className="github-entry"><span>github.com/</span><input value={username} onChange={(event) => { setUsername(event.target.value); setConnected(null) }} placeholder="username" aria-label="GitHub username" /><button onClick={connect} disabled={!username.trim() || connecting}>{connecting ? <LoaderCircle className="spin" /> : connected ? <Check /> : <ArrowRight />}</button></div></div></div>{reading && <p className="signal-status"><LoaderCircle className="spin" /> Reading your resume</p>}{error && <p className="form-error"><AlertCircle size={15} />{error}</p>}<button className="primary signals-continue" disabled={busy || reading || connecting} onClick={continueFlow}>{busy ? <><LoaderCircle className="spin" /> Finding your companies</> : <>Find my companies <Radar size={18} /></>}</button></Page>
+}
+
 function MissionDeck({ missions, index, matches, reason, onVote }: { missions: Mission[]; index: number; matches: Mission[]; reason?: string; onVote: (save: boolean) => void }) {
   const mission = missions[index]
   return <Page className="mission-page"><div className="mission-heading"><div><p className="eyebrow">04 · Relevant missions</p><h1>Choose three worth exploring.</h1></div><div className="match-slots">{[0,1,2].map((slot) => <span className={matches[slot] ? 'filled' : ''} key={slot}>{matches[slot] ? <CompanyLogo mission={matches[slot]} /> : slot + 1}</span>)}</div></div><p className="deck-context">Filtered from your interests · {index + 1} of {missions.length}</p><div className="deck-wrap"><motion.article className="mission-card" drag="x" dragConstraints={{ left:0,right:0 }} onDragEnd={(_, info) => Math.abs(info.offset.x) > 90 && onVote(info.offset.x > 0)} initial={{ opacity:0,scale:.96,rotate:1 }} animate={{ opacity:1,scale:1,rotate:0 }} exit={{ opacity:0,x:120 }}><div className="mission-company"><CompanyLogo mission={mission} /><strong>{mission.company}</strong></div><blockquote>“{mission.mission}”</blockquote><div className="mission-foot"><p>{reason || `${mission.themes.slice(0,2).join(' and ')} connect directly to the interests you selected.`}</p><div>{mission.themes.map((theme) => <span key={theme}>{theme}</span>)}</div></div></motion.article></div><div className="deck-actions"><button className="round-button" onClick={() => onVote(false)} aria-label="Skip company"><X /></button><span>{matches.length} / 3 matched</span><button className="round-button save" onClick={() => onVote(true)} aria-label={`Match with ${mission.company}`}><Heart /></button></div></Page>
 }
 
-function ProblemStep({ missions, onSelect }: { missions: Mission[]; onSelect: (mission: Mission) => void }) {
-  return <Page className="problem-page"><p className="eyebrow">05 · Commitment</p><h1>Which problem would you keep building—even without the title?</h1><div className="problem-list">{missions.map((mission, index) => <button onClick={() => onSelect(mission)} key={mission.id}><span className="problem-index">0{index + 1}</span><CompanyLogo mission={mission} /><span><strong>{mission.projectSeeds[0]}</strong><small>{mission.company} · {mission.mission}</small></span><ArrowRight /></button>)}</div></Page>
+function ProblemStep({ missions, insights, busy, onSelect }: { missions: Mission[]; insights: MatchInsight[]; busy: boolean; onSelect: (mission: Mission) => void }) {
+  const [index, setIndex] = useState(0)
+  const mission = missions[index]
+  const insight = insights.find((item) => item.missionId === mission?.id)
+  if (busy || !mission) return <Page className="commitment-loading"><LoaderCircle className="spin" /><p className="eyebrow">05 · Commitment</p><h1>Looking deeper at your three.</h1><p>Reading founder stories and the problem each company is actually trying to solve.</p></Page>
+  return <Page className="problem-page"><div className="commitment-head"><div><p className="eyebrow">05 · Commitment</p><h1>Which problem stays with you?</h1></div><span>{index + 1} / {missions.length}</span></div><AnimatePresence mode="wait"><motion.article className="commitment-card" key={mission.id} initial={{ opacity: 0, x: 35 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -35 }}><div className="commitment-company"><CompanyLogo mission={mission} /><div><strong>{mission.company}</strong><small>{mission.locations?.slice(0, 2).join(' · ')}</small></div></div><blockquote>“{mission.mission}”</blockquote><div className="commitment-detail"><section><span>The problem</span><p>{insight?.problem ?? mission.projectSeeds[0]}</p></section><section><span>Why the founders started</span><p>{insight?.founderReason ?? mission.founderStory}</p>{insight?.sourceUrl && <a href={insight.sourceUrl} target="_blank" rel="noreferrer">Source <ExternalLink size={13} /></a>}</section><section><span>Why it fits you</span><p>{insight?.whyYou ?? `${mission.themes.slice(0, 2).join(' and ')} match the direction you chose.`}</p></section></div><button className="primary" onClick={() => onSelect(mission)}>Choose {mission.company} <ArrowRight size={18} /></button></motion.article></AnimatePresence><div className="commitment-nav"><button aria-label="Previous company" onClick={() => setIndex((index - 1 + missions.length) % missions.length)}><ArrowLeft /></button>{missions.map((item, itemIndex) => <button className={itemIndex === index ? 'active' : ''} aria-label={`View ${item.company}`} onClick={() => setIndex(itemIndex)} key={item.id}><CompanyLogo mission={item} /></button>)}<button aria-label="Next company" onClick={() => setIndex((index + 1) % missions.length)}><ArrowRight /></button></div></Page>
 }
 
 function WhyStep({ mission, value, onComplete }: { mission: Mission; value: string; onComplete: (value: string) => void }) {
@@ -197,59 +265,26 @@ function WhyStep({ mission, value, onComplete }: { mission: Mission; value: stri
 }
 
 function MatchLoading({ mission }: { mission: Mission }) {
-  return <main className="match-loading"><CompanyLogo mission={mission} /><LoaderCircle className="spin" /><h1>Building your mission brief</h1><p>Connecting your background, motivation, role, and current company signals.</p></main>
+  return <main className="match-loading"><CompanyLogo mission={mission} /><LoaderCircle className="spin" /><h1>Loading your mission</h1><p>Checking role fit and current openings.</p></main>
 }
 
-function MatchReveal({ profile, mission, roadmap, onStart }: { profile: StudentProfile; mission: Mission; roadmap: Roadmap; onStart: () => void }) {
-  return <main className="match-reveal"><div className="match-top"><Brand /><span>Mission brief · 01</span></div><section className="match-hero"><motion.div className="match-logo" initial={{ y:160,scale:.6,opacity:0 }} animate={{ y:0,scale:1,opacity:1 }} transition={{ duration:.85,type:'spring',bounce:.22 }}><CompanyLogo mission={mission} /></motion.div><motion.div initial={{ opacity:0,y:18 }} animate={{ opacity:1,y:0 }} transition={{ delay:.55 }}><p className="eyebrow">Your north star</p><h1>{mission.company}</h1><div className="matched-role"><Target size={17} /> {roadmap.role}</div><p className="fit-summary">{roadmap.fitSummary}</p></motion.div></section><section className="fit-analysis"><div className="fit-title"><p className="eyebrow">Why this fit is credible</p><h2>Not a personality match.<br />A path you can prove.</h2></div><div className="fit-reasons">{roadmap.fitReasons.map((reason,index) => <motion.article initial={{ opacity:0,x:20 }} animate={{ opacity:1,x:0 }} transition={{ delay:.72+index*.12 }} key={reason.signal}><span>0{index+1}</span><div><strong>{reason.signal}</strong><p>{reason.explanation}</p></div></motion.article>)}</div></section><section className="role-bridge"><span>Starting point</span><strong>{profile.major}</strong><i /><span>Best bridge</span><strong>{roadmap.role}</strong><p>{roadmap.roleRationale}</p></section><section className="match-action"><p>{roadmap.thesis}</p><button className="primary" onClick={onStart}>Open my mission plan <Rocket size={18} /></button></section></main>
+function MatchReveal({ mission, roadmap, intel, onBack, onStart }: { mission: Mission; roadmap: Roadmap; intel: CompanyIntel; onBack: () => void; onStart: () => void }) {
+  const shortFit = roadmap.fitSummary.split(/(?<=[.!?])\s+/)[0]
+  return <main className="match-reveal brief-reveal"><div className="match-top"><Brand /><button onClick={onBack}><ArrowLeft size={16} /> Try another match</button></div><section className="brief-hero"><motion.div className="match-logo" initial={{ y: 90, scale: .72, opacity: 0 }} animate={{ y: 0, scale: 1, opacity: 1 }} transition={{ duration: .7, type: 'spring', bounce: .18 }}><CompanyLogo mission={mission} /></motion.div><motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: .32 }}><p className="eyebrow">Your north star</p><h1>{mission.company}</h1><div className="matched-role"><Target size={17} /> {roadmap.role}</div><p>{shortFit}</p></motion.div></section><section className="brief-jobs"><div><p className="eyebrow">Open now</p><h2>Roles worth looking at.</h2></div><div className="brief-job-list">{intel.jobs.length ? intel.jobs.slice(0, 3).map((job) => <a href={job.sourceUrl} target="_blank" rel="noreferrer" key={job.sourceUrl}><span><strong>{job.title}</strong><small>{job.location}</small></span><span><b>{job.totalComp || 'Not published'}</b><ExternalLink size={15} /></span></a>) : <p>No verified opening matched this role today. Your plan still targets the role family.</p>}</div></section><section className="brief-action"><button className="secondary" onClick={onBack}><ArrowLeft size={17} /> Choose another</button><button className="primary" onClick={onStart}>Build toward this <Rocket size={18} /></button></section></main>
 }
 
 function Companion({ level }: { level: number }) {
   return <motion.div className={`companion level-${Math.min(level,5)}`} animate={{ y:[0,-7,0],rotate:[0,-1.5,0,1.5,0] }} transition={{ duration:3.8,repeat:Infinity }}><span className="companion-star">✦</span><div className="companion-face"><i /><i /><span /></div><div className="companion-feet"><i /><i /></div></motion.div>
 }
 
-function GithubConnect({ github, setGithub, setProgress, close, notify }: { github: GithubProfile | null; setGithub: (profile: GithubProfile) => void; setProgress: React.Dispatch<React.SetStateAction<ProgressEvent[]>>; close: () => void; notify: (message: string) => void }) {
-  const [username, setUsername] = useState(github?.login ?? '')
-  const [busy, setBusy] = useState(false)
-  async function connect() {
-    const clean = username.trim().replace(/^@/,''); if (!clean) return; setBusy(true)
-    try {
-      const result = isDemoMode ? await new Promise<GithubProfile>((resolve) => window.setTimeout(() => resolve(demoGithub(clean)),650)) : await callFunction<GithubProfile>('github-profile',{username:clean})
-      setGithub(result)
-      setProgress((events) => [{ id:'github-connect',type:'project_milestone',label:`Connected @${result.login}`,points:50,verified:result.verified,occurredAt:new Date().toISOString() },...(result.recentCommitCount?[{id:'github-commits',type:'github_commit' as const,label:`${result.recentCommitCount} recent commits`,points:Math.min(result.recentCommitCount,5)*10,verified:result.verified,occurredAt:new Date().toISOString()}]:[]),...events.filter((event)=>!['github-connect','github-commits'].includes(event.id))])
-      notify(`GitHub connected · +${50+Math.min(result.recentCommitCount,5)*10} XP`); close()
-    } catch(error) { notify(error instanceof Error?error.message:'Could not connect GitHub.') } finally { setBusy(false) }
-  }
-  return <div className="github-modal-backdrop" role="presentation"><motion.section className="github-modal" role="dialog" aria-modal="true" aria-labelledby="github-title" initial={{ opacity:0,scale:.96,y:20 }} animate={{ opacity:1,scale:1,y:0 }}><button className="modal-close" onClick={close} aria-label="Close GitHub connection"><X /></button><Github className="modal-icon" /><p className="eyebrow">Make progress verifiable</p><h2 id="github-title">Connect GitHub</h2><p>Northstar checks public work through a server-held token. The AI sees only a trimmed profile—never your credentials or raw GitHub response.</p><div className="modal-field"><span>github.com/</span><input autoFocus value={username} onChange={(event)=>setUsername(event.target.value)} placeholder="octocat" aria-label="GitHub username" /></div><button className="primary" disabled={!username.trim()||busy} onClick={connect}>{busy?<><LoaderCircle className="spin"/>Checking public work</>:<>Connect and verify <ArrowRight size={18}/></>}</button><button className="skip-link" onClick={close}>I’ll do this later</button></motion.section></div>
-}
-
 type SetState<T> = React.Dispatch<React.SetStateAction<T>>
-const isStepEvent = (event: ProgressEvent) => !['github-connect', 'github-commits'].includes(event.id)
 
-function MissionControl({ mission, profile, why, motivation, roadmap, intel, resume, setResume, path, setPath, records, setRecords, github, setGithub, progress, setProgress, onEmployer, notify }: { mission: Mission; profile: StudentProfile; why: string; motivation: string; roadmap: Roadmap; intel: CompanyIntel; resume: ResumeIntake | null; setResume: SetState<ResumeIntake | null>; path: PathStep[]; setPath: SetState<PathStep[]>; records: Record<string, StepRecord>; setRecords: SetState<Record<string, StepRecord>>; github: GithubProfile | null; setGithub: (profile: GithubProfile) => void; progress: ProgressEvent[]; setProgress: SetState<ProgressEvent[]>; onEmployer: () => void; notify: (message: string) => void }) {
-  const [showGithub, setShowGithub] = useState(false)
-  const [building, setBuilding] = useState(false)
+function MissionControl({ mission, roadmap, intel, path, records, setRecords, github, progress, setProgress, onEmployer, notify }: { mission: Mission; roadmap: Roadmap; intel: CompanyIntel; path: PathStep[]; records: Record<string, StepRecord>; setRecords: SetState<Record<string, StepRecord>>; github: GithubProfile | null; progress: ProgressEvent[]; setProgress: SetState<ProgressEvent[]>; onEmployer: () => void; notify: (message: string) => void }) {
   const [busyId, setBusyId] = useState<string | null>(null)
   const xp = progress.reduce((sum, event) => sum + event.points, 0)
   const level = Math.max(1, Math.floor(xp / 100) + 1)
   const levelNames = ['Curious', 'Committed', 'Builder', 'Proven', 'Mission-ready']
   const verifiedCount = path.filter((step) => records[step.id]?.status === 'verified').length
-
-  async function buildPath(intake: ResumeIntake) {
-    setBuilding(true); setResume(intake)
-    let steps = buildCuratedPath(profile, intake, mission, roadmap.role)
-    if (!isDemoMode) {
-      try {
-        const result = await callFunction<{ steps: PathStep[] }>('generate-path', {
-          profile, resume: intake, role: roadmap.role, why, motivation,
-          mission: { id: mission.id, company: mission.company, mission: mission.mission, themes: mission.themes, projectSeeds: mission.projectSeeds },
-          github: github ? { topLanguages: github.topLanguages, repositories: github.repositories.map(({ name, description, language }) => ({ name, description, language })) } : null,
-        })
-        if (result.steps?.length) steps = result.steps
-      } catch { notify('Using the built-in path builder.') }
-    } else await new Promise((resolve) => window.setTimeout(resolve, 700))
-    setPath(steps); setRecords({}); setProgress((events) => events.filter((event) => !isStepEvent(event))); setBuilding(false)
-  }
 
   async function submitProof(step: PathStep, proof: ProofInput) {
     setBusyId(step.id)
@@ -272,20 +307,12 @@ function MissionControl({ mission, profile, why, motivation, roadmap, intel, res
     setBusyId(null)
   }
 
-  function restart() {
-    if (verifiedCount > 0 && !window.confirm('Rebuilding your path clears the proof you have verified so far. Continue?')) return
-    setPath([]); setRecords({}); setProgress((events) => events.filter((event) => !isStepEvent(event)))
-  }
-
-  return <Page className="mission-control">{showGithub && <GithubConnect github={github} setGithub={setGithub} setProgress={setProgress} close={() => setShowGithub(false)} notify={notify} />}
+  return <Page className="mission-control">
     <section className="dashboard-head"><div><div className="mission-lockup"><CompanyLogo mission={mission} /><span>{mission.company}<small>{roadmap.role}</small></span></div><h1>{levelNames[Math.min(level - 1, 4)]}</h1><div className="xp-line"><div><i style={{ width: `${xp % 100}%` }} /></div><strong>{xp} XP</strong><span>{100 - (xp % 100)} to level {level + 1}</span></div></div><div className="pet-stage"><Companion level={level} /><span>Level {level}</span></div></section>
-    <section className="proof-strip"><div><span>Steps verified</span><strong>{path.length ? `${verifiedCount} / ${path.length}` : '—'}</strong></div><div><span>Public proof</span><strong>{github ? `${github.recentCommitCount} commits` : 'Not connected'}</strong></div><button onClick={() => setShowGithub(true)}><Github size={17} />{github ? 'View GitHub' : 'Connect GitHub'}</button></section>
+    <section className="proof-strip"><div><span>Steps verified</span><strong>{path.length ? `${verifiedCount} / ${path.length}` : '—'}</strong></div><div><span>Public proof</span><strong>{github ? `${github.recentCommitCount} commits` : 'Add proof as you build'}</strong></div><div><span>Plan length</span><strong>{path.length} concrete steps</strong></div></section>
     <section className="quest-section">
-      {path.length === 0 ? <ResumeIntakeForm mission={mission} role={roadmap.role} busy={building} initial={resume} onSubmit={buildPath} /> : <>
-        <div className="section-title"><div><p className="eyebrow">Your path</p><h2>Do these in order.</h2></div><p>A step is done only when your proof is checked.</p></div>
-        <PathView steps={path} records={records} busyId={busyId} onSubmit={submitProof} />
-        <button className="skip-link path-reset" onClick={restart}>Update my resume and rebuild the path</button>
-      </>}
+      <div className="section-title"><div><p className="eyebrow">Your path</p><h2>Do these in order.</h2></div><p>A step is done only when your proof is checked.</p></div>
+      <PathView steps={path} records={records} busyId={busyId} onSubmit={submitProof} />
     </section>
     <ResearchSection mission={mission} intel={intel} />
     <section className="employer-cta"><div><Eye /><p className="eyebrow">The other side of the signal</p><h2>See what the employer sees.</h2></div><button className="primary" onClick={onEmployer}>Flip the view <ArrowRight size={18} /></button></section></Page>

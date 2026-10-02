@@ -23,11 +23,20 @@ export function rankMissions(profile: StudentProfile, allMissions: Mission[]): M
 
   function score(mission: Mission) {
     const corpus = normalized([mission.company, mission.mission, ...mission.themes].join(' '))
-    return signals.reduce((total, signal) => {
+    const interestScore = signals.reduce((total, signal) => {
       if (!signal) return total
       const words = signal.split(' ').filter((word) => word.length > 2)
       return total + words.reduce((sum, word) => sum + (corpus.includes(word) ? (signal === rawSignals.find((raw) => raw.includes(word)) ? 4 : 2) : 0), 0)
     }, 0)
+    const school = normalized(profile.university)
+    const nearby = /byu|brigham young|university of utah|utah state|uvu|westminster/.test(school) ? 'utah'
+      : /university of washington|uw seattle|seattle university/.test(school) ? 'seattle'
+      : /stanford|berkeley|san jose state/.test(school) ? 'bay area'
+      : /harvard|mit|northeastern|boston university/.test(school) ? 'boston'
+      : /nyu|columbia|new york university/.test(school) ? 'new york'
+      : ''
+    const locationScore = nearby && mission.locations?.some((location) => normalized(location).includes(nearby)) ? 7 : 0
+    return interestScore + locationScore
   }
 }
 

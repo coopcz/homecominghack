@@ -403,6 +403,11 @@ enabled = true
 verify_jwt = false
 entrypoint = "./functions/recommend-companies/index.ts"
 
+[functions.research-matches]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/research-matches/index.ts"
+
 [functions.generate-path]
 enabled = true
 verify_jwt = false

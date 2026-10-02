@@ -17,6 +17,7 @@ export interface Mission {
   logoUrl: string
   roleArchetypes: string[]
   projectSeeds: string[]
+  locations?: string[]
 }
 
 export interface RoadmapProject {
@@ -65,7 +66,7 @@ export interface GithubProfile {
 
 export interface CompanyIntel {
   people: Array<{ name: string; title: string; reason: string; sourceUrl: string }>
-  jobs: Array<{ title: string; location: string; summary: string; sourceUrl: string }>
+  jobs: Array<{ title: string; location: string; totalComp: string; summary: string; sourceUrl: string }>
   events: Array<{ title: string; date: string; location: string; sourceUrl: string }>
   feed: Array<{ title: string; summary: string; date: string; sourceUrl: string }>
   researchedAt: string
@@ -87,7 +88,15 @@ export interface CompanyRecommendation {
   generatedBy: 'ai' | 'curated'
 }
 
-export type AppStep = 'welcome' | 'interests' | 'profile' | 'motivation' | 'missions' | 'problem' | 'why' | 'match' | 'mission' | 'employer'
+export interface MatchInsight {
+  missionId: string
+  problem: string
+  founderReason: string
+  whyYou: string
+  sourceUrl: string
+}
+
+export type AppStep = 'welcome' | 'interests' | 'profile' | 'motivation' | 'signals' | 'missions' | 'problem' | 'why' | 'match' | 'mission' | 'employer'
 
 export interface ResumeIntake {
   text: string
