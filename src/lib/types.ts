@@ -88,3 +88,37 @@ export interface CompanyRecommendation {
 }
 
 export type AppStep = 'welcome' | 'interests' | 'profile' | 'motivation' | 'missions' | 'problem' | 'why' | 'match' | 'mission' | 'employer'
+
+export interface ResumeIntake {
+  text: string
+  fileName?: string
+  skills: string[]
+  experience: string[]
+}
+
+export type ProofKind = 'link' | 'file' | 'text'
+
+export interface PathStep {
+  id: string
+  project: string
+  title: string
+  summary: string
+  actions: string[]
+  proofAsk: string
+  proofKinds: ProofKind[]
+  checks: string[]
+  minCommits?: number
+  points: number
+}
+
+export interface ProofCheck { criterion: string; met: boolean; note: string }
+
+export interface StepRecord {
+  stepId: string
+  status: 'verified' | 'needs_work'
+  proof: { kind: ProofKind; value: string; fileName?: string }
+  feedback: string
+  checks: ProofCheck[]
+  method: 'ai' | 'github' | 'local'
+  checkedAt: string
+}

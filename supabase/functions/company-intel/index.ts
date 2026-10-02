@@ -32,7 +32,8 @@ Company mission: ${body.mission ?? ''}`
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: Deno.env.get('OPENAI_SEARCH_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-5.5',
+        model: Deno.env.get('OPENAI_SEARCH_MODEL') ?? Deno.env.get('OPENAI_MODEL') ?? 'gpt-4.1-mini',
+        max_output_tokens: 2400,
         tools: [{ type: 'web_search', external_web_access: true }],
         tool_choice: 'required',
         input,
@@ -47,6 +48,12 @@ Company mission: ${body.mission ?? ''}`
     intel.researchedAt = new Date().toISOString()
     intel.live = true
     intel.events = intel.events.filter((event: { date: string }) => event.date > today)
+    const uniqueBySource = <T extends { sourceUrl: string }>(items: T[]) =>
+      items.filter((item, index) => items.findIndex((candidate) => candidate.sourceUrl === item.sourceUrl) === index)
+    intel.people = uniqueBySource(intel.people)
+    intel.jobs = uniqueBySource(intel.jobs)
+    intel.events = uniqueBySource(intel.events)
+    intel.feed = uniqueBySource(intel.feed)
     return Response.json(intel, { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : 'Company research failed' }, { status: 500, headers: corsHeaders })

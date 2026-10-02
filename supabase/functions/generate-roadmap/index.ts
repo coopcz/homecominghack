@@ -73,7 +73,8 @@ async function generateWithOpenAI(input: string) {
     method: 'POST',
     headers: { Authorization: `Bearer ${Deno.env.get('OPENAI_API_KEY')}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: Deno.env.get('OPENAI_MODEL') ?? 'gpt-5-mini',
+      model: Deno.env.get('OPENAI_MODEL') ?? 'gpt-4.1-mini',
+      max_output_tokens: 2200,
       input,
       text: { format: { type: 'json_schema', name: 'mission_roadmap', strict: true, schema: roadmapSchema } },
     }),

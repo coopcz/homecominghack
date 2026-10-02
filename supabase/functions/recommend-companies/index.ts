@@ -43,7 +43,8 @@ CATALOG: ${JSON.stringify(catalog)}`
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: Deno.env.get('OPENAI_MODEL') ?? 'gpt-5-mini',
+        model: Deno.env.get('OPENAI_MODEL') ?? 'gpt-4.1-mini',
+        max_output_tokens: 900,
         input,
         text: { format: { type: 'json_schema', name: 'company_recommendations', strict: true, schema } },
       }),

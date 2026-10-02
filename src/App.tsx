@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
-  ArrowLeft, ArrowRight, BookOpen, BriefcaseBusiness, Check, CheckCircle2, Circle,
-  ExternalLink, Eye, Github, GraduationCap, Hammer, Heart, LoaderCircle,
+  ArrowLeft, ArrowRight, BriefcaseBusiness, Check, Circle,
+  ExternalLink, Eye, Github, GraduationCap, Heart, LoaderCircle,
   LockKeyhole, Newspaper, Plus, Radar, Rocket, Sparkles, Target, UsersRound, X,
 } from 'lucide-react'
 import { fallbackIntel, missions as companyCatalog } from './lib/data'
 import { buildCuratedRoadmap, inferRole, rankMissions } from './lib/matching'
+import { buildCuratedPath, verifyLocally, type ProofInput } from './lib/path'
+import { PathView, ResumeIntakeForm } from './components/Path'
 import { callFunction, isDemoMode } from './lib/supabase'
-import type { AppStep, CompanyIntel, CompanyRecommendation, GithubProfile, Mission, ProgressEvent, Roadmap, StudentProfile } from './lib/types'
+import type { AppStep, CompanyIntel, CompanyRecommendation, GithubProfile, Mission, PathStep, ProgressEvent, ResumeIntake, Roadmap, StepRecord, StudentProfile } from './lib/types'
 
 const interestOptions = [
   'Artificial intelligence', 'Humanoid robots', 'Healthcare', 'Biotech', 'E-commerce',
@@ -46,6 +48,9 @@ export default function App() {
   const [intel, setIntel] = useState<CompanyIntel>(fallbackIntel)
   const [github, setGithub] = useState<GithubProfile | null>(null)
   const [progress, setProgress] = useState<ProgressEvent[]>([])
+  const [resume, setResume] = useState<ResumeIntake | null>(null)
+  const [path, setPath] = useState<PathStep[]>([])
+  const [records, setRecords] = useState<Record<string, StepRecord>>({})
   const [discovering, setDiscovering] = useState(false)
   const [planBusy, setPlanBusy] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
@@ -64,12 +69,15 @@ export default function App() {
       if (state.intel) setIntel(state.intel)
       if (state.github) setGithub(state.github)
       if (state.progress) setProgress(state.progress)
+      if (state.resume) setResume(state.resume)
+      if (state.path) setPath(state.path)
+      if (state.records) setRecords(state.records)
     } catch { localStorage.removeItem('northstar-demo-v4') }
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('northstar-demo-v4', JSON.stringify({ profile, motivation, selected, why, role, roadmap, intel, github, progress }))
-  }, [profile, motivation, selected, why, role, roadmap, intel, github, progress])
+    localStorage.setItem('northstar-demo-v4', JSON.stringify({ profile, motivation, selected, why, role, roadmap, intel, github, progress, resume, path, records }))
+  }, [profile, motivation, selected, why, role, roadmap, intel, github, progress, resume, path, records])
 
   function go(next: AppStep) { setStep(next); window.scrollTo({ top: 0, behavior: 'smooth' }) }
   function notify(message: string) { setToast(message); window.setTimeout(() => setToast(null), 2800) }
@@ -102,7 +110,7 @@ export default function App() {
   }
 
   async function finishWhy(value: string) {
-    setWhy(value); setPlanBusy(true); setRoadmap(null); go('match')
+    setWhy(value); setPlanBusy(true); setRoadmap(null); setPath([]); setRecords({}); setProgress((events) => events.filter((event) => ['github-connect', 'github-commits'].includes(event.id))); go('match')
     const nextRole = inferRole(profile, [motivation, value], selected)
     setRole(nextRole)
     const curated = buildCuratedRoadmap(profile, selected, nextRole, value)
@@ -132,8 +140,8 @@ export default function App() {
       {step === 'problem' && <ProblemStep key="problem" missions={matchedMissions} onSelect={(mission) => { setSelected(mission); go('why') }} />}
       {step === 'why' && <WhyStep key="why" mission={selected} value={why} onComplete={finishWhy} />}
       {step === 'match' && (planBusy || !roadmap ? <MatchLoading key="loading" mission={selected} /> : <MatchReveal key="match" profile={profile} mission={selected} roadmap={roadmap} onStart={() => go('mission')} />)}
-      {step === 'mission' && roadmap && <MissionControl key="mission-control" mission={selected} roadmap={roadmap} intel={intel} github={github} setGithub={setGithub} progress={progress} setProgress={setProgress} onEmployer={() => go('employer')} notify={notify} />}
-      {step === 'employer' && roadmap && <EmployerView key="employer" profile={profile} mission={selected} roadmap={roadmap} why={why} github={github} progress={progress} onBack={() => go('mission')} />}
+      {step === 'mission' && roadmap && <MissionControl key="mission-control" mission={selected} profile={profile} why={why} motivation={motivation} roadmap={roadmap} intel={intel} resume={resume} setResume={setResume} path={path} setPath={setPath} records={records} setRecords={setRecords} github={github} setGithub={setGithub} progress={progress} setProgress={setProgress} onEmployer={() => go('employer')} notify={notify} />}
+      {step === 'employer' && roadmap && <EmployerView key="employer" profile={profile} mission={selected} roadmap={roadmap} why={why} github={github} progress={progress} path={path} records={records} onBack={() => go('mission')} />}
     </AnimatePresence>
     <AnimatePresence>{toast && <motion.div className="toast" initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 18 }}>{toast}</motion.div>}</AnimatePresence>
   </div>
@@ -152,7 +160,7 @@ function CompanyLogo({ mission, className = '' }: { mission: Mission; className?
 }
 
 function Welcome({ onStart }: { onStart: () => void }) {
-  return <main className="welcome"><div className="orbit" aria-hidden="true"><i /><i /><i /><span>✦</span></div><nav><Brand /></nav><motion.section initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: .1 } } }}><motion.p className="kicker" variants={{ hidden:{opacity:0,y:12},show:{opacity:1,y:0} }}>Mission-first career discovery</motion.p><motion.h1 variants={{ hidden:{opacity:0,y:24},show:{opacity:1,y:0} }}>Build toward work<br /><em>you actually care about.</em></motion.h1><motion.p className="hero-copy" variants={{ hidden:{opacity:0,y:18},show:{opacity:1,y:0} }}>Discover a company mission, understand why you fit, and follow a plan that produces proof.</motion.p><motion.button className="primary" onClick={onStart} variants={{ hidden:{opacity:0,y:15},show:{opacity:1,y:0} }}>Find my north star <ArrowRight size={18} /></motion.button></motion.section></main>
+  return <main className="welcome"><div className="orbit" aria-hidden="true"><i /><i /><i /></div><span className="welcome-star" aria-hidden="true">✦</span><nav><Brand /></nav><motion.section initial="hidden" animate="show" variants={{ show: { transition: { staggerChildren: .1 } } }}><motion.p className="kicker" variants={{ hidden:{opacity:0,y:12},show:{opacity:1,y:0} }}>Mission-first career discovery</motion.p><motion.h1 variants={{ hidden:{opacity:0,y:24},show:{opacity:1,y:0} }}>Build toward work<br /><em>you actually care about.</em></motion.h1><motion.p className="hero-copy" variants={{ hidden:{opacity:0,y:18},show:{opacity:1,y:0} }}>Discover a company mission, understand why you fit, and follow a plan that produces proof.</motion.p><motion.button className="primary" onClick={onStart} variants={{ hidden:{opacity:0,y:15},show:{opacity:1,y:0} }}>Find my north star <ArrowRight size={18} /></motion.button></motion.section></main>
 }
 
 function InterestsStep({ profile, onComplete }: { profile: StudentProfile; onComplete: (interests: string[]) => void }) {
@@ -215,26 +223,95 @@ function GithubConnect({ github, setGithub, setProgress, close, notify }: { gith
   return <div className="github-modal-backdrop" role="presentation"><motion.section className="github-modal" role="dialog" aria-modal="true" aria-labelledby="github-title" initial={{ opacity:0,scale:.96,y:20 }} animate={{ opacity:1,scale:1,y:0 }}><button className="modal-close" onClick={close} aria-label="Close GitHub connection"><X /></button><Github className="modal-icon" /><p className="eyebrow">Make progress verifiable</p><h2 id="github-title">Connect GitHub</h2><p>Northstar checks public work through a server-held token. The AI sees only a trimmed profile—never your credentials or raw GitHub response.</p><div className="modal-field"><span>github.com/</span><input autoFocus value={username} onChange={(event)=>setUsername(event.target.value)} placeholder="octocat" aria-label="GitHub username" /></div><button className="primary" disabled={!username.trim()||busy} onClick={connect}>{busy?<><LoaderCircle className="spin"/>Checking public work</>:<>Connect and verify <ArrowRight size={18}/></>}</button><button className="skip-link" onClick={close}>I’ll do this later</button></motion.section></div>
 }
 
-function MissionControl({ mission, roadmap, intel, github, setGithub, progress, setProgress, onEmployer, notify }: { mission: Mission; roadmap: Roadmap; intel: CompanyIntel; github: GithubProfile | null; setGithub: (profile: GithubProfile) => void; progress: ProgressEvent[]; setProgress: React.Dispatch<React.SetStateAction<ProgressEvent[]>>; onEmployer: () => void; notify: (message: string) => void }) {
-  const [showGithub, setShowGithub] = useState(!github)
-  const xp = progress.reduce((sum,event)=>sum+event.points,0)
-  const level = Math.max(1,Math.floor(xp/100)+1)
-  const levelNames = ['Curious','Committed','Builder','Proven','Mission-ready']
-  const quest = [
-    {id:'build',icon:Hammer,type:'Build',title:roadmap.projects[0].title,detail:roadmap.projects[0].brief,proof:roadmap.projects[0].proof,meta:`${roadmap.projects[0].weeks} weeks · ${roadmap.projects[0].tags.join(' · ')}`,points:40},
-    {id:'learn',icon:BookOpen,type:'Learn',title:roadmap.courses[0].title,detail:roadmap.courses[0].outcome,proof:`Use ${roadmap.courses[0].provider} and publish a one-page system map.`,meta:'Week 1 · foundation',points:25},
-    {id:'meet',icon:UsersRound,type:'Meet',title:intel.people[0]?`Talk to ${intel.people[0].name}`:`Talk to a ${roadmap.role}`,detail:intel.people[0]?.reason??roadmap.peopleStrategy[0],proof:intel.people[0]?.sourceUrl?'Prepare one useful observation and one specific question.':'Log the conversation and the next action you learned.',meta:'Week 2 · domain signal',points:30},
-  ]
-  function toggleQuest(item:{id:string;title:string;points:number}) { setProgress((events)=>events.some((event)=>event.id===item.id)?events.filter((event)=>event.id!==item.id):[{id:item.id,type:item.id==='meet'?'outreach':item.id==='learn'?'course_completed':'project_milestone',label:item.title,points:item.points,verified:false,occurredAt:new Date().toISOString()},...events]); if(!progress.some((event)=>event.id===item.id))notify(`Completed · +${item.points} XP`) }
-  return <Page className="mission-control">{showGithub&&<GithubConnect github={github} setGithub={setGithub} setProgress={setProgress} close={()=>setShowGithub(false)} notify={notify}/>}<section className="dashboard-head"><div><div className="mission-lockup"><CompanyLogo mission={mission}/><span>{mission.company}<small>{roadmap.role}</small></span></div><p className="eyebrow">Mission progress</p><h1>{levelNames[Math.min(level-1,4)]}</h1><div className="xp-line"><div><i style={{width:`${xp%100}%`}}/></div><strong>{xp} XP</strong><span>{100-(xp%100)} to level {level+1}</span></div></div><div className="pet-stage"><Companion level={level}/><span>Level {level}</span></div></section><section className="proof-strip"><div><span>Current role target</span><strong>{roadmap.role}</strong></div><div><span>Completed moves</span><strong>{progress.filter((event)=>['build','learn','meet'].includes(event.id)).length} / 3</strong></div><div><span>Public proof</span><strong>{github?`${github.recentCommitCount} commits`:'Not connected'}</strong></div><button onClick={()=>setShowGithub(true)}><Github size={17}/>{github?'View GitHub proof':'Connect GitHub'}</button></section><section className="quest-section"><div className="section-title"><div><p className="eyebrow">Your 30-day path</p><h2>Three moves, in order.</h2></div><p>Each step creates evidence the next step can build on. Finish the artifact before asking for access.</p></div><div className="quest-path">{quest.map((item,index)=>{const done=progress.some((event)=>event.id===item.id);const Icon=item.icon;return <article className={`${done?'done':''} ${index%2?'right':'left'}`} key={item.id}><div className="quest-node"><Icon/><span>{index+1}</span></div><div className="quest-content"><p>{item.type} · +{item.points} XP</p><h3>{item.title}</h3><span>{item.detail}</span><dl><dt>Deliverable</dt><dd>{item.proof}</dd><dt>Cadence</dt><dd>{item.meta}</dd></dl><button onClick={()=>toggleQuest(item)}>{done?<CheckCircle2/>:<Circle/>}{done?'Completed':'Mark complete'}</button></div></article>})}</div></section><ResearchSection mission={mission} intel={intel}/><section className="employer-cta"><div><Eye/><p className="eyebrow">The other side of the signal</p><h2>See what the employer sees.</h2></div><button className="primary" onClick={onEmployer}>Flip the view <ArrowRight size={18}/></button></section></Page>
+type SetState<T> = React.Dispatch<React.SetStateAction<T>>
+const isStepEvent = (event: ProgressEvent) => !['github-connect', 'github-commits'].includes(event.id)
+
+function MissionControl({ mission, profile, why, motivation, roadmap, intel, resume, setResume, path, setPath, records, setRecords, github, setGithub, progress, setProgress, onEmployer, notify }: { mission: Mission; profile: StudentProfile; why: string; motivation: string; roadmap: Roadmap; intel: CompanyIntel; resume: ResumeIntake | null; setResume: SetState<ResumeIntake | null>; path: PathStep[]; setPath: SetState<PathStep[]>; records: Record<string, StepRecord>; setRecords: SetState<Record<string, StepRecord>>; github: GithubProfile | null; setGithub: (profile: GithubProfile) => void; progress: ProgressEvent[]; setProgress: SetState<ProgressEvent[]>; onEmployer: () => void; notify: (message: string) => void }) {
+  const [showGithub, setShowGithub] = useState(false)
+  const [building, setBuilding] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const xp = progress.reduce((sum, event) => sum + event.points, 0)
+  const level = Math.max(1, Math.floor(xp / 100) + 1)
+  const levelNames = ['Curious', 'Committed', 'Builder', 'Proven', 'Mission-ready']
+  const verifiedCount = path.filter((step) => records[step.id]?.status === 'verified').length
+
+  async function buildPath(intake: ResumeIntake) {
+    setBuilding(true); setResume(intake)
+    let steps = buildCuratedPath(profile, intake, mission, roadmap.role)
+    if (!isDemoMode) {
+      try {
+        const result = await callFunction<{ steps: PathStep[] }>('generate-path', {
+          profile, resume: intake, role: roadmap.role, why, motivation,
+          mission: { id: mission.id, company: mission.company, mission: mission.mission, themes: mission.themes, projectSeeds: mission.projectSeeds },
+          github: github ? { topLanguages: github.topLanguages, repositories: github.repositories.map(({ name, description, language }) => ({ name, description, language })) } : null,
+        })
+        if (result.steps?.length) steps = result.steps
+      } catch { notify('Using the built-in path builder.') }
+    } else await new Promise((resolve) => window.setTimeout(resolve, 700))
+    setPath(steps); setRecords({}); setProgress((events) => events.filter((event) => !isStepEvent(event))); setBuilding(false)
+  }
+
+  async function submitProof(step: PathStep, proof: ProofInput) {
+    setBusyId(step.id)
+    let record: StepRecord
+    try {
+      if (isDemoMode) record = await verifyLocally(step, proof)
+      else {
+        const result = await callFunction<{ verdict: StepRecord['status']; feedback: string; checks: StepRecord['checks'] }>('verify-proof', {
+          step, role: roadmap.role, mission: { company: mission.company, mission: mission.mission },
+          proof: { kind: proof.kind, value: proof.value, fileName: proof.fileName, imageData: proof.imageData },
+        })
+        record = { stepId: step.id, status: result.verdict, feedback: result.feedback, checks: result.checks, method: proof.kind === 'link' && /github\.com/.test(proof.value) ? 'github' : 'ai', checkedAt: new Date().toISOString(), proof: { kind: proof.kind, value: proof.value, fileName: proof.fileName } }
+      }
+    } catch { notify('The proof checker could not be reached. Try again in a moment.'); setBusyId(null); return }
+    setRecords((current) => ({ ...current, [step.id]: record }))
+    if (record.status === 'verified') {
+      setProgress((events) => [{ id: step.id, type: 'project_milestone', label: step.title, points: step.points, verified: true, occurredAt: record.checkedAt }, ...events.filter((event) => event.id !== step.id)])
+      notify(`Verified · +${step.points} XP`)
+    }
+    setBusyId(null)
+  }
+
+  function restart() {
+    if (verifiedCount > 0 && !window.confirm('Rebuilding your path clears the proof you have verified so far. Continue?')) return
+    setPath([]); setRecords({}); setProgress((events) => events.filter((event) => !isStepEvent(event)))
+  }
+
+  return <Page className="mission-control">{showGithub && <GithubConnect github={github} setGithub={setGithub} setProgress={setProgress} close={() => setShowGithub(false)} notify={notify} />}
+    <section className="dashboard-head"><div><div className="mission-lockup"><CompanyLogo mission={mission} /><span>{mission.company}<small>{roadmap.role}</small></span></div><h1>{levelNames[Math.min(level - 1, 4)]}</h1><div className="xp-line"><div><i style={{ width: `${xp % 100}%` }} /></div><strong>{xp} XP</strong><span>{100 - (xp % 100)} to level {level + 1}</span></div></div><div className="pet-stage"><Companion level={level} /><span>Level {level}</span></div></section>
+    <section className="proof-strip"><div><span>Steps verified</span><strong>{path.length ? `${verifiedCount} / ${path.length}` : '—'}</strong></div><div><span>Public proof</span><strong>{github ? `${github.recentCommitCount} commits` : 'Not connected'}</strong></div><button onClick={() => setShowGithub(true)}><Github size={17} />{github ? 'View GitHub' : 'Connect GitHub'}</button></section>
+    <section className="quest-section">
+      {path.length === 0 ? <ResumeIntakeForm mission={mission} role={roadmap.role} busy={building} initial={resume} onSubmit={buildPath} /> : <>
+        <div className="section-title"><div><p className="eyebrow">Your path</p><h2>Do these in order.</h2></div><p>A step is done only when your proof is checked.</p></div>
+        <PathView steps={path} records={records} busyId={busyId} onSubmit={submitProof} />
+        <button className="skip-link path-reset" onClick={restart}>Update my resume and rebuild the path</button>
+      </>}
+    </section>
+    <ResearchSection mission={mission} intel={intel} />
+    <section className="employer-cta"><div><Eye /><p className="eyebrow">The other side of the signal</p><h2>See what the employer sees.</h2></div><button className="primary" onClick={onEmployer}>Flip the view <ArrowRight size={18} /></button></section></Page>
 }
 
 function ResearchSection({ mission, intel }: { mission: Mission; intel: CompanyIntel }) {
-  return <section className="research-section"><div className="section-title"><div><p className="eyebrow">Live company signal</p><h2>What’s changing at {mission.company}.</h2></div><p>{intel.live?`Researched ${new Date(intel.researchedAt).toLocaleDateString()}. Every item links to its source.`:'Connect the OpenAI key to research current jobs, people, events, and reporting with direct sources.'}</p></div>{intel.jobs.length>0&&<div className="research-block"><h3><BriefcaseBusiness/> Relevant open roles</h3><div className="research-list">{intel.jobs.map((job)=><a href={job.sourceUrl} target="_blank" rel="noreferrer" key={job.sourceUrl}><span><strong>{job.title}</strong><small>{job.location}</small><p>{job.summary}</p></span><ExternalLink/></a>)}</div></div>}{intel.feed.length>0&&<div className="research-block"><h3><Newspaper/> Company feed</h3><div className="research-list">{intel.feed.map((item)=><a href={item.sourceUrl} target="_blank" rel="noreferrer" key={item.sourceUrl}><time>{item.date}</time><span><strong>{item.title}</strong><p>{item.summary}</p></span><ExternalLink/></a>)}</div></div>}{intel.events.length>0&&<div className="research-block"><h3><Radar/> Where to show up</h3><div className="research-list">{intel.events.map((event)=><a href={event.sourceUrl} target="_blank" rel="noreferrer" key={event.sourceUrl}><time>{event.date}</time><span><strong>{event.title}</strong><p>{event.location}</p></span><ExternalLink/></a>)}</div></div>}{!intel.live&&<div className="research-empty"><Radar/><div><strong>Live research is ready to turn on.</strong><p>Add `OPENAI_API_KEY`, deploy `company-intel`, and this section fills with exact jobs, news articles, people, and future events—not fabricated placeholders.</p></div></div>}<p className="source-note">Sources are external and can change. Confirm role availability before applying.</p></section>
+  const uniqueBySource = <T extends { sourceUrl: string }>(items: T[]) =>
+    items.filter((item, index) => items.findIndex((candidate) => candidate.sourceUrl === item.sourceUrl) === index)
+  const people = uniqueBySource(intel.people)
+  const jobs = uniqueBySource(intel.jobs)
+  const events = uniqueBySource(intel.events)
+  const feed = uniqueBySource(intel.feed)
+
+  return <section className="research-section">
+    <div className="section-title"><div><p className="eyebrow">Live company signal</p><h2>What’s changing at {mission.company}.</h2></div><p>{intel.live ? `Researched ${new Date(intel.researchedAt).toLocaleDateString()}. Every item links to its source.` : 'Connect the OpenAI key to research current jobs, people, events, and reporting with direct sources.'}</p></div>
+    {people.length > 0 && <div className="research-block"><h3><UsersRound /> People worth learning from</h3><div className="research-list">{people.map((person) => <a href={person.sourceUrl} target="_blank" rel="noreferrer" key={person.sourceUrl}><span><strong>{person.name}</strong><small>{person.title}</small><p>{person.reason}</p></span><ExternalLink /></a>)}</div></div>}
+    {jobs.length > 0 && <div className="research-block"><h3><BriefcaseBusiness /> Relevant open roles</h3><div className="research-list">{jobs.map((job) => <a href={job.sourceUrl} target="_blank" rel="noreferrer" key={job.sourceUrl}><span><strong>{job.title}</strong><small>{job.location}</small><p>{job.summary}</p></span><ExternalLink /></a>)}</div></div>}
+    {events.length > 0 && <div className="research-block"><h3><Radar /> Where to show up</h3><div className="research-list">{events.map((event) => <a href={event.sourceUrl} target="_blank" rel="noreferrer" key={event.sourceUrl}><time>{event.date}</time><span><strong>{event.title}</strong><p>{event.location}</p></span><ExternalLink /></a>)}</div></div>}
+    {feed.length > 0 && <div className="research-block"><h3><Newspaper /> Company feed</h3><div className="research-list">{feed.map((item) => <a href={item.sourceUrl} target="_blank" rel="noreferrer" key={item.sourceUrl}><time>{item.date}</time><span><strong>{item.title}</strong><p>{item.summary}</p></span><ExternalLink /></a>)}</div></div>}
+    {!intel.live && <div className="research-empty"><Radar /><div><strong>Live research is ready to turn on.</strong><p>Add `OPENAI_API_KEY`, deploy `company-intel`, and this section fills with exact jobs, news articles, people, and future events—not fabricated placeholders.</p></div></div>}
+    <p className="source-note">Sources are external and can change. Confirm role availability before applying.</p>
+  </section>
 }
 
-function EmployerView({ profile, mission, roadmap, why, github, progress, onBack }: { profile: StudentProfile; mission: Mission; roadmap: Roadmap; why: string; github: GithubProfile|null; progress: ProgressEvent[]; onBack:()=>void }) {
-  const xp=progress.reduce((sum,event)=>sum+event.points,0);const completed=progress.filter((event)=>['build','learn','meet'].includes(event.id)).length;const alignment=Math.min(96,76+completed*5+(github?5:0))
-  const evidence=[{label:'Mission conviction',state:'Specific',ready:true},{label:'Public projects',state:progress.some((event)=>event.id==='build')?'Visible':'In progress',ready:progress.some((event)=>event.id==='build')},{label:'GitHub activity',state:github?`${github.recentCommitCount} recent commits`:'Not connected',ready:Boolean(github)},{label:'Domain learning',state:progress.some((event)=>event.id==='learn')?'Demonstrated':'Next step',ready:progress.some((event)=>event.id==='learn')}]
+function EmployerView({ profile, mission, roadmap, why, github, progress, path, records, onBack }: { profile: StudentProfile; mission: Mission; roadmap: Roadmap; why: string; github: GithubProfile|null; progress: ProgressEvent[]; path: PathStep[]; records: Record<string, StepRecord>; onBack:()=>void }) {
+  const xp=progress.reduce((sum,event)=>sum+event.points,0);const verifiedSteps=path.filter((step)=>records[step.id]?.status==='verified');const completed=verifiedSteps.length;const shipped=verifiedSteps.some((step)=>step.minCommits);const alignment=Math.min(96,76+Math.min(completed,3)*5+(github?5:0))
+  const evidence=[{label:'Mission conviction',state:'Specific',ready:true},{label:'Public projects',state:shipped?'Verified':'In progress',ready:shipped},{label:'GitHub activity',state:github?`${github.recentCommitCount} recent commits`:'Not connected',ready:Boolean(github)},{label:'Verified steps',state:path.length?`${completed} of ${path.length}`:'Not started',ready:completed>0}]
   return <main className="employer-view"><nav><button onClick={onBack}><ArrowLeft size={17}/> Student view</button><span>Employer preview</span></nav><motion.section initial={{opacity:0,rotateY:-7}} animate={{opacity:1,rotateY:0}}><div className="employer-head"><div><p className="eyebrow">Candidate discovered through mission fit</p><h1>{profile.major}</h1><p>{profile.university} · Aspiring {roadmap.role}</p></div><CompanyLogo mission={mission}/></div><div className="candidate-why"><span>Why {mission.company}</span><blockquote>“{why}”</blockquote></div><div className="alignment"><div><span>Mission alignment</span><strong>{alignment}%</strong></div><div><i style={{width:`${alignment}%`}}/></div></div><div className="evidence-grid">{evidence.map((item)=><div key={item.label}><span className={item.ready?'ready':''}>{item.ready?<Check size={14}/>:<Circle size={14}/>}</span><p>{item.label}</p><strong>{item.state}</strong></div>)}</div><div className="candidate-foot"><div><strong>{xp}</strong><span>proof XP</span></div><p>This candidate is deliberately creating evidence for {mission.company}’s mission—not mass applying.</p><LockKeyhole/></div></motion.section></main>
 }
