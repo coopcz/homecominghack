@@ -22,6 +22,14 @@ const schema = {
 
 const prompt = (body: Record<string, unknown>) => `Build a custom, evidence-led path to this student's dream role. The roadmap, resume, job source, company research, motivation, and prior work are authoritative context.
 
+${(body as { mission?: { id?: string } }).mission?.id === 'neighbor' ? `NEIGHBOR PLAN CONTRACT (OVERRIDES ANY CONFLICTING GENERAL RULE BELOW):
+- Preserve this exact 12-section, 12-month progression: (1) role foundations, (2) role tools, (3) marketplace mechanics, (4) focused Neighbor-shaped build, (5) practitioner feedback and revision, (6) deeper system with explicit failures and observability, (7) advanced role depth, (8) integrated flagship, (9) failure-mode and systems review, (10) portfolio packaging, (11) interview defense, (12) focused application campaign.
+- Return exactly 12 steps in that order. Keep the effort near 20% focused learning, 70% building/testing, and 10% documenting/networking. Learning must feed the next artifact immediately.
+- Personalize the contents from the ideal role, survey, motivation, resume, GitHub evidence, and job source. Test out of already-demonstrated basics without removing a section; use that section to deepen the next build instead.
+- Ground work in Neighbor's actual marketplace: unused-space supply, renter demand, liquidity, trust and safety, host success, booking experience, and utilization. Match the artifact medium to the role; do not force software projects on design, product, growth, operations, or data candidates.
+- Steps 4, 6, and 8 must reference project-1, project-2, and project-3 respectively. Non-project steps use an empty projectId.
+` : ''}
+
 DESIGN RULES:
 - Return 8-16 steps, but choose the count and sections based on this person. Do not use a fixed template, fixed three-project structure, or identical sequence across roles.
 - Use the supplied roadmap projects and their user, problem, scope, milestones, deliverables, acceptance criteria, and recruiter signal. Preserve that specificity in the actions and checks rather than collapsing a project into generic implementation steps. For each project step, set projectId to the matching roadmap project id. Use an empty string for non-project steps.

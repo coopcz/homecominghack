@@ -165,7 +165,7 @@ export default function App() {
         nextIntel = withDossier(selected.id, researched)
         setIntel(nextIntel)
       } catch { /* The verified local dossier remains available to roadmap generation. */ }
-      try {
+      if (selected.id !== 'neighbor') try {
         const generated = await callFunction<Roadmap>('generate-roadmap', {
           profile: nextProfile, resume: nextResume ? { skills: nextResume.skills, experience: nextResume.experience, text: nextResume.text.slice(0, 10000) } : null,
           github: github ? { topLanguages: github.topLanguages, repositories: github.repositories.slice(0, 6) } : null,
@@ -176,8 +176,8 @@ export default function App() {
     }
     setIntel(nextIntel); setRoadmap(nextRoadmap)
     const intake = nextResume ?? { text: '', skills: [...new Set([...nextProfile.skills, ...(github?.topLanguages ?? [])])], experience: [] }
-    let nextPath = buildJobGroundedPath(nextProfile, intake, selected, nextRole)
-    if (!isDemoMode) {
+    let nextPath = buildJobGroundedPath(nextProfile, intake, selected, nextRole, { why, motivation })
+    if (!isDemoMode && selected.id !== 'neighbor') {
       try {
         const result = await callFunction<{ steps: PathStep[] }>('generate-path', { profile: nextProfile, resume: intake, role: nextRole, why, motivation, mission: selected, roadmap: nextRoadmap, companyResearch: nextIntel, github, jobSource })
         if (result.steps?.length && result.steps.every((step) => step.phase && step.completionMode && step.resources)) nextPath = result.steps
@@ -370,7 +370,7 @@ function MissionControl({ tab, mission, profile, why, motivation, resume, setRes
   const [showGithub, setShowGithub] = useState(false)
   const [building, setBuilding] = useState(false)
   const [showIntake, setShowIntake] = useState(false)
-  const surveyPath = useMemo(() => buildJobGroundedPath(profile, { text: '', skills: profile.skills, experience: [] }, mission, roadmap.role), [profile, mission, roadmap.role])
+  const surveyPath = useMemo(() => buildJobGroundedPath(profile, { text: '', skills: profile.skills, experience: [] }, mission, roadmap.role, { why, motivation }), [profile, mission, roadmap.role, why, motivation])
   const visiblePath = path.length ? path : surveyPath
   const xp = progress.reduce((sum, event) => sum + event.points, 0)
   const level = Math.max(1, Math.floor(xp / 100) + 1)
@@ -379,8 +379,11 @@ function MissionControl({ tab, mission, profile, why, motivation, resume, setRes
 
   async function buildPath(intake: ResumeIntake) {
     setBuilding(true); setResume(intake)
-    let steps = buildJobGroundedPath(profile, intake, mission, roadmap.role)
-    if (!isDemoMode) {
+    let steps = buildJobGroundedPath(profile, intake, mission, roadmap.role, { why, motivation })
+    // Neighbor has a fixed 12-month mission curriculum. The local builder still
+    // personalizes every module from the survey, target role, and resume, but an
+    // AI response must not replace the requested structure.
+    if (!isDemoMode && mission.id !== 'neighbor') {
       try {
         const result = await callFunction<{ steps: PathStep[] }>('generate-path', {
           profile, resume: intake, role: roadmap.role, why, motivation,

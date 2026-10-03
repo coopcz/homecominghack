@@ -35,6 +35,14 @@ const roadmapSchema = {
 
 const promptFor = (body: Record<string, unknown>) => `You are a rigorous career-path architect. Design a deeply personalized plan for this exact student, target role, job evidence, and company mission.
 
+${(body as { mission?: { id?: string } }).mission?.id === 'neighbor' ? `NEIGHBOR PLAN CONTRACT (OVERRIDES ANY CONFLICTING GENERAL RULE BELOW):
+- This is a fixed 12-month, evidence-first mission plan for Neighbor. Keep the ratio near 20% focused learning, 70% building/testing, and 10% documenting/networking.
+- Adapt every detail to the supplied ideal role, survey interests, major, skills, motivation, resume, GitHub evidence, and job source. Skip or compress skills already demonstrated; never replace the overall progression.
+- Return exactly five escalating projects with IDs project-1 through project-5. Together they must support this sequence: role foundations; role tools; marketplace mechanics; a focused Neighbor-shaped build; practitioner feedback; a deeper system with failures and observability; advanced role depth; an integrated flagship; failure-mode/systems review; portfolio; interview defense; targeted application campaign.
+- Ground projects in Neighbor's actual problem space: unused-space supply, renter demand, local marketplace liquidity, trust and safety, host success, booking experience, and space utilization. The user's ideal role determines the medium: software roles build software systems, data roles build analyses/pipelines/models, design roles build research/prototypes, and product/growth roles build discovery/experiments/operating plans.
+- Every major artifact must expose the decision, method, measured result, failure, and revision. Use only public, synthetic, or user-owned data.
+` : ''}
+
 QUALITY CONTRACT:
 - Research the exact company and role before writing. Infer 3-8 role requirements from the supplied official job source when present; otherwise triangulate current official careers pages, engineering/product writing, and credible role evidence, and label every inference. Never present a generic industry preference as company-specific fact.
 - State 3-6 recruiter signals: what a recruiter or hiring manager for this company and role will actually screen for, why it matters in this environment, and exactly what portfolio/resume/interview evidence would demonstrate it. Mark each signal's evidence source honestly.
@@ -58,6 +66,7 @@ Deno.serve(async (request) => {
     if (!body?.mission?.id || !body?.profile || !body?.why || !body?.role) return Response.json({ error: 'Missing roadmap context' }, { status: 400, headers: corsHeaders })
     if (!hasProvider()) return Response.json({ error: 'No AI provider configured' }, { status: 503, headers: corsHeaders })
     const roadmap = await generateStructured({ prompt: promptFor(body), schema: roadmapSchema, name: 'mission_roadmap', maxTokens: 10000, webSearch: true, reasoningEffort: 'high' })
+    if (body.mission.id === 'neighbor') roadmap.projects = (roadmap.projects ?? []).slice(0, 5).map((project: Record<string, unknown>, index: number) => ({ ...project, id: `project-${index + 1}` }))
     roadmap.courses = (roadmap.courses ?? []).filter((course: { url?: string }) => isDirectLearningUrl(course.url))
     roadmap.version = 2; roadmap.missionId = body.mission.id; roadmap.role = body.role; roadmap.generatedBy = 'ai'
     roadmap.targetJob = { ...roadmap.targetJob, title: body.role, company: body.mission.company, retrievedAt: new Date().toISOString(), sourceUrl: body.jobSource ?? roadmap.targetJob.sourceUrl ?? '', status: body.jobSource ? 'sourced' : 'inferred' }
